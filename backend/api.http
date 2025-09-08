@@ -1,0 +1,109 @@
+###
+# Requisição para criar uma nova movimentação financeira
+POST http://localhost:3000/movimentacoes
+Content-Type: application/json
+
+{
+    "barbeiro_id": 1,
+    "descricao": "Teste de inserção via VS Code",
+    "valor": 75.00,
+    "tipo": "receita"
+}
+
+###
+# Requisição para listar todas as movimentações financeiras
+GET http://localhost:3000/movimentacoes
+
+###
+# Requisição para atualizar uma movimentação financeira (PUT)
+PUT http://localhost:3000/movimentacoes/5
+Content-Type: application/json
+
+{
+    "descricao": "Corte do cliente Pedro (atualizado)",
+    "valor": 65.00,
+    "tipo": "receita"
+}
+
+###
+# Requisição para deletar uma movimentação financeira (DELETE)
+DELETE http://localhost:3000/movimentacoes/5
+
+###
+# Requisição para obter o saldo total de um barbeiro
+GET http://localhost:3000/saldo/1
+
+###
+# Adicionando uma receita
+POST http://localhost:3000/movimentacoes
+Content-Type: application/json
+
+{
+    "barbeiro_id": 1,
+    "descricao": "Corte de cabelo",
+    "valor": 50.00,
+    "tipo": "receita"
+}
+
+###
+# Adicionando uma despesa
+###
+# Requisição para criar uma nova movimentação (agora com categoria e forma de pagamento)
+POST http://localhost:3000/movimentacoes
+Content-Type: application/json
+
+{
+    "barbeiro_id": 1,
+    "descricao": "Venda de shampoo para barba",
+    "valor": 45.00,
+    "tipo": "receita",
+    "categoria": "produto",
+    "forma_pagamento": "pix"
+}
+
+
+###
+GET http://localhost:3000/saldo/1
+
+###
+# Requisição para criar um novo cliente
+POST http://localhost:3000/clientes
+Content-Type: application/json
+
+{
+    "nome": "João Victor",
+    "email": "joao.victor@email.com",
+    "telefone": "999999999"
+}
+
+###
+# Requisição para criar um novo agendamento
+POST http://localhost:3000/agendamentos
+Content-Type: application/json
+
+{
+    "cliente_id": 1,
+    "barbeiro_id": 1,
+    "data_hora": "2025-09-08 17:00:00",
+    "servico": "Corte de cabelo e barba"
+}
+
+###
+# Requisição para listar todos os agendamentos
+GET http://localhost:3000/agendamentos
+
+###
+# Requisição para atualizar um agendamento (PUT)
+PUT http://localhost:3000/agendamentos/2
+Content-Type: application/json
+
+{
+    "cliente_id": 1,
+    "barbeiro_id": 1,
+    "data_hora": "2025-09-08 18:00:00",
+    "servico": "Corte de cabelo (atualizado)"
+}
+
+###
+# Requisição para deletar um agendamento (DELETE)
+DELETE http://localhost:3000/agendamentos/2
