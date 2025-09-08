@@ -1,0 +1,15 @@
+###
+# Requisição para criar uma nova movimentação financeira
+POST http://localhost:3000/movimentacoes
+Content-Type: application/json
+
+{
+    "barbeiro_id": 1,
+    "descricao": "Teste de inserção via VS Code",
+    "valor": 75.00,
+    "tipo": "receita"
+}
+
+###
+# Requisição para listar todas as movimentações financeiras
+GET http://localhost:3000/movimentacoes
