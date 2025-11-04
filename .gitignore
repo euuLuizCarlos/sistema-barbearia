@@ -1,0 +1,13 @@
+# Ignora todas as pastas node_modules em qualquer subdiretório
+node_modules/
+
+# Se você tiver uma pasta 'backend' e 'frontend'
+backend/node_modules/
+frontend/node_modules/
+
+# Adicione também arquivos de lock (opcional, mas recomendado)
+package-lock.json
+yarn.lock
+
+# Adicione variáveis de ambiente (se usar)
+.env
