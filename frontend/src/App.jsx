@@ -55,7 +55,7 @@ function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowSplash(false);
-    }, 2000); // 4 segundos de delay
+    }, 2000); // 2 segundos de delay
 
     return () => clearTimeout(timer); // Limpa o timer se o componente for desmontado
   }, []);

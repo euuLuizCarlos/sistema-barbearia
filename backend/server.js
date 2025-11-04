@@ -59,18 +59,22 @@ const authenticateToken = (req, res, next) => {
 // ==========================================================
 
 // Rota para Cadastro de Novo Barbeiro/Usuário
+// Rota para Cadastro de Novo Usuário (Barbeiro ou Cliente)
 app.post('/auth/register', async (req, res) => {
-    const { nome, email, password } = req.body;
+    // Agora esperamos também o tipo_usuario
+    const { nome, email, password, tipo_usuario } = req.body; 
     
-    if (!nome || !email || !password) {
-        return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+    // Validar o tipo
+    if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
+        return res.status(400).json({ error: 'Todos os campos, incluindo o tipo de usuário (barbeiro ou cliente), são obrigatórios.' });
     }
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = 'INSERT INTO barbeiros (nome, email, password_hash) VALUES (?, ?, ?)';
+        // O SQL agora insere o tipo_usuario
+        const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario) VALUES (?, ?, ?, ?)';
         
-        const [result] = await db.promise().query(sql, [nome, email, hashedPassword]);
+        const [result] = await db.promise().query(sql, [nome, email, hashedPassword, tipo_usuario]);
         
         res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: result.insertId, userName: nome });
 
@@ -87,19 +91,20 @@ app.post('/auth/register', async (req, res) => {
 // Rota para Login de Usuário (APENAS ESTA ROTA DEVE SER SUBSTITUÍDA NO server.js)
 // Rota para Login de Usuário (CORREÇÃO FINAL DE ESTABILIDADE)
 // Rota para Login de Usuário (CORREÇÃO FINAL DE ESTABILIDADE)
+// Rota para Login de Usuário (CORRIGIDA para buscar e retornar o Tipo de Usuário)
 app.post('/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        const sql = 'SELECT id, nome, email, password_hash FROM barbeiros WHERE email = ?';
+        // CORREÇÃO: Selecionamos também o campo 'tipo_usuario'
+        const sql = 'SELECT id, nome, email, password_hash, tipo_usuario FROM barbeiros WHERE email = ?';
         const [results] = await db.promise().query(sql, [email]);
         
         const user = results[0];
 
-        // 1. CHECAGEM ESSENCIAL: Se a query retornou zero resultados, o usuário não existe.
+        // 1. CHECAGEM ESSENCIAL
         if (!user || !user.password_hash) { 
-            // Retorna o erro de forma unificada e imediata.
-            return res.status(401).json({ error: 'Usuário inexistente ou senha inválida.' }); 
+            return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
 
         // 2. Compara a Senha
@@ -107,16 +112,22 @@ app.post('/auth/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password_hash);
         
         if (!isMatch) {
-            return res.status(401).json({ error: 'Usuário inexistente ou senha inválida.' });
+            return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
 
         // 3. Sucesso: Gera o Token
-        const token = jwt.sign({ id: user.id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+        // Incluímos o tipo_usuario no Token (para proteção de rotas) e na resposta (para uso imediato no frontend)
+        const token = jwt.sign({ id: user.id, email: user.email, tipo: user.tipo_usuario }, SECRET_KEY, { expiresIn: '1h' });
         
-        res.json({ message: 'Login bem-sucedido!', token, userId: user.id, userName: user.nome });
+        res.json({ 
+            message: 'Login bem-sucedido!', 
+            token, 
+            userId: user.id, 
+            userName: user.nome,
+            userType: user.tipo_usuario // <--- ESSENCIAL: Retornando o tipo
+        });
 
     } catch (err) {
-        // Este catch deve pegar apenas falhas de servidor/conexão.
         console.error('Erro no login:', err);
         res.status(500).json({ error: 'Erro interno no servidor.' }); 
     }
