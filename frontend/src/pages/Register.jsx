@@ -1,26 +1,19 @@
-// src/pages/Register.jsx (CÓDIGO FINAL E CORRIGIDO - COM LÓGICA DE ESCOLHA)
+// src/pages/Register.jsx (CÓDIGO FINAL E CORRIGIDO COM BOTÃO DE VOLTAR)
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Link, Navigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import api from '../services/api';
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png';
-
-// Importamos a tela de escolha
-import EscolhaTipoUsuario from '../components/Auth/EscolhaTipoUsuario'; 
+// Remova o import EscolhaTipoUsuario daqui!
 
 const Register = () => {
     const navigate = useNavigate();
     const location = useLocation(); 
     const queryParams = new URLSearchParams(location.search);
-    const userType = queryParams.get('type'); 
     
-    // 1. VERIFICAÇÃO CRÍTICA (DEVE SER FEITA ANTES DE QUALQUER HOOK)
-    if (!userType || (userType !== 'barbeiro' && userType !== 'cliente')) {
-        // Se não houver tipo na URL, renderiza a tela de escolha
-        // ATENÇÃO: Retorna o componente DE ESCOLHA AQUI, para evitar que os HOOKS abaixo sejam chamados
-        return <EscolhaTipoUsuario />; 
-    }
+    // O tipo de usuário é pego da URL. Ele EXISTE garantidamente pelo RegisterGuard.
+    const userType = queryParams.get('type') || 'cliente'; 
 
-    // A partir daqui, SÓ ENTRAMOS SE userType for 'barbeiro' ou 'cliente' (Hooks são seguros)
+    // Todos os hooks são chamados no topo, incondicionalmente
     const [formData, setFormData] = useState({
         nome: '',
         email: '',
@@ -28,9 +21,8 @@ const Register = () => {
         tipo_usuario: userType, // O campo crucial é setado
     });
     const [message, setMessage] = useState('');
-    // ... (continua com as funções handleChange, handleSubmit, etc)
-    
-    // ... (funções handleChange e handleSubmit, que permanecem as mesmas) ...
+
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData({ ...formData, [name]: value });
@@ -53,8 +45,12 @@ const Register = () => {
             setMessage(errorMessage);
         }
     };
-    // Fim das funções
     
+    // Função para voltar para a tela de escolha de perfil
+    const handleVoltar = () => {
+        navigate('/escolha-perfil');
+    };
+
     return (
         <div style={{ padding: '40px', maxWidth: '400px', margin: '50px auto', border: '1px solid #ccc', borderRadius: '8px', textAlign: 'center' }}>
             <img src={barberLogo} alt="Logo" style={{ width: '80px', marginBottom: '10px' }} />
@@ -69,8 +65,9 @@ const Register = () => {
                 </button>
             </form>
             
-            {message && <p style={{ marginTop: '15px', color: message.includes('sucesso') ? 'green' : 'red' }}>{message}</p>}
-            <p style={{ marginTop: '20px' }}>
+            {message && <p style={{ marginTop: '15px', color: message.includes('sucesso') ? 'green' : 'red' }}>{message}</p>} 
+            
+            <p style={{ marginTop: '10px' }}>
                 <Link to="/login" style={{ color: '#023047' }}>Já tem conta? Faça Login</Link>
             </p>
         </div>
