@@ -12,21 +12,21 @@ const EscolhaTipoUsuario = () => {
     };
 
     const cardStyle = {
-        padding: '30px', margin: '10px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',
-        backgroundColor: '#fff', width: '180px', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s',
+        padding: '40px', margin: '10px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',
+        backgroundColor: '#ffffffff', width: '250px', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s',
         textAlign: 'center', border: '2px solid #023047', color: '#023047'
     };
-    const hoverStyle = { transform: 'translateY(-5px)', boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' };
+    const hoverStyle = { transform: 'translateY(-8px)', boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' };
 
 
     return (
         <div style={{
             display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-            minHeight: '100vh', backgroundColor: '#FFFFFF', fontFamily: 'Arial, sans-serif', padding: '20px'
+            minHeight: '100vh', backgroundColor: '#023047', fontFamily: 'Arial, sans-serif', padding: '20px'
         }}>
-            <h1 style={{ marginBottom: '40px', color: '#023047' }}>Qual o seu perfil?</h1>
+            <h1 style={{ marginBottom: '40px', color: '#FFB703' }}>Qual o seu perfil?</h1>
 
-            <div style={{ display: 'flex', gap: '40px' }}>
+            <div style={{ display: 'flex', gap: '60px' }}>
                 {/* Opção Barbeiro */}
                 <div 
                     style={cardStyle}
@@ -51,7 +51,7 @@ const EscolhaTipoUsuario = () => {
                     <p style={{ fontSize: '0.9em', color: '#555' }}>Fazer Agendamento</p>
                 </div>
             </div>
-            <p style={{ marginTop: '50px', color: '#023047' }}>Já tem conta? <a href="/login" style={{ color: '#FFB703', fontWeight: 'bold' }}>Faça Login</a></p>
+            <p style={{ marginTop: '50px', color: '#FFFF' }}>Já tem conta? <a href="/login" style={{ color: '#FFB703', fontWeight: 'bold' }}>Faça Login</a></p>
         </div>
     );
 };

@@ -1,9 +1,12 @@
-// src/pages/Login.jsx - REDESIGN MINIMALISTA COM FUNDO BRANCO E QUADRO AZUL
+// src/pages/Login.jsx (CÓDIGO FINAL E COMPLETO - CORRIGINDO A IMAGEM E O FLUXO)
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext'; 
+
+// CORREÇÃO FINAL DA IMAGEM: Garante que a extensão .png (ou .jpg se você o renomeou) esteja correta
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png'; 
+
 
 const Login = () => {
     const [formData, setFormData] = useState({
@@ -29,7 +32,8 @@ const Login = () => {
                 password: formData.password
             });
 
-            login(response.data.token, response.data.userId, response.data.userName);
+            // SUCESSO:
+            login(response.data.token, response.data.userId, response.data.userName, response.data.userType);
             
             setMessage('Login efetuado com sucesso! Redirecionando...');
             setTimeout(() => {
@@ -38,7 +42,21 @@ const Login = () => {
 
         } catch (error) {
             let errorMessage = error.response?.data?.error || 'Erro de rede. Verifique se o backend está rodando.';
-            setMessage(errorMessage);
+            
+            // LÓGICA CHAVE DE REDIRECIONAMENTO PARA ATIVAÇÃO NO 403
+            if (error.response?.status === 403 && errorMessage.includes('Ativação pendente')) {
+                 const pendingUserId = error.response.data?.userId;
+
+                 setMessage(errorMessage + " Redirecionando para a ativação...");
+                 
+                 setTimeout(() => {
+                    // REDIRECIONAMENTO CORRETO: Manda para a rota de ativação com o ID do usuário
+                    navigate(`/ativacao?userId=${pendingUserId}`); 
+                 }, 1500);
+            } else {
+                 // Erro normal (senha errada, usuário inexistente, etc.)
+                 setMessage(errorMessage);
+            }
         }
     };
 
@@ -49,35 +67,37 @@ const Login = () => {
             justifyContent: 'center',
             alignItems: 'center',
             minHeight: '100vh',
-            // FUNDO BRANCO
             backgroundColor: '#FFFFFF', 
             color: '#333',
             fontFamily: 'Arial, sans-serif',
             padding: '20px'
         }}>
+            
             {/* CONTAINER CENTRAL (O "QUADRADO AZUL") */}
             <div style={{
-                backgroundColor: '#023047', // AZUL MARINHO ESCURO (Cor Principal)
+                backgroundColor: '#023047', 
                 padding: '40px',
                 borderRadius: '10px',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-                maxWidth: '380px',
+                maxWidth: '550px', // MAIS LARGO
                 width: '100%',
                 boxSizing: 'border-box',
-                color: '#fff' // Texto dentro do quadro será branco
+                color: '#fff' 
             }}>
                 
-                {/* ÁREA DO LOGO E TÍTULO (Centralizada no Quadro) */}
+                {/* ÁREA DO LOGO E TÍTULO */}
                 <div style={{ marginBottom: '30px', textAlign: 'center' }}>
                     <img
                         src={barberLogo}
                         alt="BarberApp Logo"
-                        style={{ width: '140px', height: 'auto', marginBottom: '10px' }} // Tamanho ajustado
+                        style={{ width: '90%', height: 'auto', margin: '0 0 15px 0' }} 
                     />
                     <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Área de Acesso</h2>
+                    <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Entre com suas credenciais de barbeiro.</p>
                 </div>
 
                 <form onSubmit={handleSubmit}>
+                    {/* INPUTS */}
                     <input
                         type="email"
                         name="email"
@@ -85,16 +105,7 @@ const Login = () => {
                         onChange={handleChange}
                         placeholder="Email"
                         required
-                        style={{
-                            width: 'calc(100% - 20px)',
-                            padding: '12px 10px',
-                            marginBottom: '20px',
-                            border: '1px solid #455a64', // Bordas mais escuras
-                            borderRadius: '5px',
-                            fontSize: '1em',
-                            backgroundColor: '#fff', // Fundo do input branco
-                            color: '#333'
-                        }}
+                        style={{ width: '100%', padding: '12px 10px', marginBottom: '20px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
                     />
                     <input
                         type="password"
@@ -103,31 +114,11 @@ const Login = () => {
                         onChange={handleChange}
                         placeholder="Senha"
                         required
-                        style={{
-                            width: 'calc(100% - 20px)',
-                            padding: '12px 10px',
-                            marginBottom: '30px',
-                            border: '1px solid #455a64', // Bordas mais escuras
-                            borderRadius: '5px',
-                            fontSize: '1em',
-                            backgroundColor: '#fff', // Fundo do input branco
-                            color: '#333'
-                        }}
+                        style={{ width: '100%', padding: '12px 10px', marginBottom: '30px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
                     />
                     <button
                         type="submit"
-                        style={{
-                            width: '100%',
-                            padding: '12px 10px',
-                            backgroundColor: '#FFB703', // Dourado/Mostarda (DESTAQUE)
-                            color: '#023047', // Texto Azul Marinho
-                            border: 'none',
-                            borderRadius: '5px',
-                            fontSize: '1.1em',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            transition: 'background-color 0.3s ease',
-                        }}
+                        style={{ width: '100%', padding: '12px 10px', backgroundColor: '#FFB703', color: '#023047', border: 'none', borderRadius: '5px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer', transition: 'background-color 0.3s ease' }}
                         onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#cc9000'}
                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#FFB703'}
                     >
@@ -135,32 +126,26 @@ const Login = () => {
                     </button>
                 </form>
 
-                {/* Mensagens de Status (Dentro do Quadro Azul) */}
+                {/* Mensagens de Status */}
                 {message && (
                     <p 
                         style={{ 
-                            marginTop: '20px', 
-                            fontWeight: 'bold',
-                            fontSize: '0.9em',
-                            // Cores de mensagem ajustadas para o fundo azul marinho
+                            marginTop: '20px', fontWeight: 'bold', fontSize: '0.9em',
                             color: message.includes('sucesso') ? '#90ee90' : (message.includes('Verificando') ? '#fff' : '#ff9999')
                         }}
                     >
                         {message}
                     </p>
                 )}
+                
                 <p style={{ marginTop: '30px', fontSize: '0.9em' }}>
                     <a 
                         href="/register" 
-                        style={{ 
-                            color: '#FFB703', // Dourado para link
-                            textDecoration: 'none', 
-                            fontWeight: 'bold' 
-                        }}
+                        style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}
                         onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                         onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
                     >
-                        Registrar-se
+                        Não tem conta? Cadastre-se
                     </a>
                 </p>
             </div>

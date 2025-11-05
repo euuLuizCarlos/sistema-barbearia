@@ -1,19 +1,21 @@
-// src/pages/Dashboard.jsx (NOVO CÓDIGO FINAL)
+// src/pages/Dashboard.jsx (CÓDIGO FINAL DE ROTEAMENTO DE PERFIS)
 import React from 'react';
-import { useAuth } from '../contexts/AuthContext'; // NOVO IMPORT
-import DashboardBarbeiro from './DashboardBarbeiro'; // IMPORT
-import DashboardCliente from './DashboardCliente'; // IMPORT
+import { useAuth } from '../contexts/AuthContext'; 
+import DashboardBarbeiro from './DashboardBarbeiro'; 
+import DashboardCliente from './DashboardCliente'; 
 
 const Dashboard = () => {
+    // Obtém o usuário e o estado de autenticação
     const { user, isAuthenticated } = useAuth();
 
+    // Esta verificação é crucial, mas o PrivateRoute já a faz.
     if (!isAuthenticated) {
-        // Redirecionamento de segurança (Embora o PrivateRoute já faça isso)
         return null; 
     }
     
     const userType = user?.userType;
 
+    // Lógica para renderizar o Dashboard correto
     if (userType === 'barbeiro') {
         return <DashboardBarbeiro />;
     }
@@ -22,8 +24,8 @@ const Dashboard = () => {
         return <DashboardCliente />;
     }
 
-    // Caso de usuário logado, mas sem tipo definido (erro)
-    return <h1>Erro: Tipo de usuário desconhecido.</h1>; 
+    // Caso o tipo não seja definido ou esteja carregando
+    return <h1>Carregando seu painel...</h1>; 
 };
 
 export default Dashboard;

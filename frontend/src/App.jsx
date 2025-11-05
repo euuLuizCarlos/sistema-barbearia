@@ -1,15 +1,14 @@
-// src/App.jsx - CÓDIGO FINAL E COMPLETO COM CORREÇÃO DE IMPORTAÇÃO
+// src/App.jsx - CÓDIGO FINAL E COMPLETO
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { FaDollarSign, FaCalendarAlt, FaHome, FaChartLine, FaCog } from 'react-icons/fa'; 
+import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { FaDollarSign, FaCalendarAlt, FaHome, FaChartLine, FaCog, FaBars, FaSignOutAlt, FaUserAlt } from 'react-icons/fa'; 
 
-// IMPORTAÇÃO CORRIGIDA DO CONTEXTO DE AUTENTICAÇÃO
+// Importar Componentes de Proteção e Lógica
 import { AuthProvider, useAuth } from './contexts/AuthContext'; 
-
-// Importar Componentes de Estrutura
-import NavBar from './components/NavBar';
+import Sidebar from './components/Sidebar'; 
 import SplashScreen from './components/SplashScreen'; 
 import EscolhaTipoUsuario from './components/Auth/EscolhaTipoUsuario'; 
+import ProfileGuard from './components/Guards/ProfileGuard'; 
 
 // Importar as Páginas
 import Dashboard from './pages/Dashboard';
@@ -19,87 +18,100 @@ import Agenda from './pages/Agenda';
 import Configuracoes from './pages/Configuracoes';
 import Login from './pages/Login'; 
 import Register from './pages/Register'; 
-import RegisterGuard from './pages/RegisterGuard'; 
+import AtivacaoConta from './pages/AtivacaoConta';
+import CadastroPerfilBarbeiro from './pages/CadastroPerfilBarbeiro';
+import MeuPerfil from './pages/MeuPerfil'; // Nova rota de Perfil
 
 
 // ==========================================================
-// COMPONENTES DE ESTRUTURA
+// COMPONENTES DE ESTRUTURA E GUARDA DE ROTAS
 // ==========================================================
 
 const PrivateRoute = () => {
     const { isAuthenticated } = useAuth();
+    // Redireciona para /login se não houver token
     return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
 };
 
-const Navigation = () => {
-    const location = useLocation(); 
-    const { logout } = useAuth();
+
+// Header (Menu Hambúrguer, Título, Botão Sair)
+const Header = ({ toggleSidebar }) => {
+    const { isAuthenticated, logout, user } = useAuth();
+    const location = useLocation();
     
-    const linkStyle = (path) => ({
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textDecoration: 'none',
-        color: location.pathname.startsWith(path) ? 'blue' : 'gray', 
-        fontSize: '12px',
-        minWidth: '65px' 
-    });
+    const showHeader = isAuthenticated && !['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro'].includes(location.pathname);
+
+    if (!showHeader) return null;
     
-    const handleLogout = () => {
-        logout(); 
-    };
+    const userName = user?.userName || 'Barbeiro(a)';
 
     return (
         <div style={{
-            position: 'fixed', bottom: 0, left: 0, width: '100%', height: '60px',
-            background: '#fff', borderTop: '1px solid #ccc', display: 'flex',
-            justifyContent: 'space-around', alignItems: 'center', zIndex: 1000 
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '15px 20px', backgroundColor: '#fff', borderBottom: '1px solid #ccc',
+            position: 'sticky', top: 0, zIndex: 10
         }}>
-            <Link to="/" style={linkStyle('/')}> <FaHome size={20} /> Principal </Link>
-            <Link to="/transacoes" style={linkStyle('/transacoes')}> <FaDollarSign size={20} /> Transações </Link>
-            <Link to="/relatorio" style={linkStyle('/relatorio')}> <FaChartLine size={20} /> Relatórios </Link>
-            <Link to="/agenda" style={linkStyle('/agenda')}> <FaCalendarAlt size={20} /> Agenda </Link>
-            <Link to="/configuracoes" style={linkStyle('/configuracoes')}> <FaCog size={20} /> Config. </Link>
-            <div onClick={handleLogout} style={{...linkStyle(''), color: 'red', cursor: 'pointer'}}>
-                <FaCog size={20} />
-                Sair
-            </div>
+            <button onClick={toggleSidebar} style={{ background: 'none', border: 'none', fontSize: '1.5em', cursor: 'pointer', color: '#023047' }}>
+                <FaBars />
+            </button>
+            <h2 style={{ margin: 0, fontSize: '1.2em', color: '#023047' }}>Bem-vindo, {userName.split(' ')[0]}!</h2>
+            <button onClick={logout} style={{ background: 'none', border: 'none', color: 'red', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <FaSignOutAlt /> Sair
+            </button>
         </div>
     );
 };
 
 
 const AppContent = () => {
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
     const location = useLocation(); 
     
-    const noNavRoutes = ['/login', '/register', '/escolha-perfil'];
-    const showNavigation = !noNavRoutes.includes(location.pathname);
+    const noNavRoutes = ['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro'];
+    const showHeader = !noNavRoutes.includes(location.pathname);
+    const showNavigation = !noNavRoutes.includes(location.pathname); // MANTIDO: Lógica de esconder
 
     return (
-        <div style={{ paddingBottom: showNavigation ? '60px' : '0' }}> 
-            <Routes>
-                
-                {/* ROTAS DE AUTENTICAÇÃO (Sem navbar) */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/escolha-perfil" element={<EscolhaTipoUsuario />} />
-                
-                {/* ROTA DE REGISTRO - Chama o Guarda que faz a escolha */}
-                <Route path="/register" element={<RegisterGuard />} /> 
-                
-                {/* ROTA PROTEGIDA: Envolve todas as rotas principais */}
-                <Route element={<PrivateRoute />}>
-                    {/* ROTAS PRINCIPAIS DO SISTEMA (Protegidas) */}
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/transacoes" element={<Transacoes key={location.key} />} />
-                    <Route path="/relatorio" element={<Relatorios />} /> 
-                    <Route path="/agenda" element={<Agenda />} />
-                    <Route path="/configuracoes" element={<Configuracoes />} />
-                    <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
-                </Route>
-            </Routes>
-            
-            {showNavigation && <Navigation />}
-        </div>
+        <>
+            {showHeader && <Header toggleSidebar={toggleSidebar} />}
+            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+
+            <div style={{ marginLeft: sidebarOpen ? '250px' : '0', transition: 'margin-left 0.3s' }}>
+                <Routes>
+                    
+                    {/* ROTAS PÚBLICAS */}
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/escolha-perfil" element={<EscolhaTipoUsuario />} />
+                    <Route path="/ativacao" element={<AtivacaoConta />} /> 
+                    <Route path="/register" element={<Register />} /> 
+                    
+                    {/* ROTAS PROTEGIDAS PELO LOGIN (PRIMEIRO NÍVEL) */}
+                    <Route element={<PrivateRoute />}>
+                        
+                        {/* ROTA EXCLUSIVA DE CADASTRO DE PERFIL (Para o ProfileGuard redirecionar) */}
+                        <Route path="/perfil/cadastro" element={<CadastroPerfilBarbeiro />} /> 
+
+                        {/* ROTAS PRINCIPAIS PROTEGIDAS PELO PROFILE GUARD (SEGUNDO NÍVEL DE SEGURANÇA) */}
+                        <Route element={<ProfileGuard />}> 
+                            <Route path="/" element={<Dashboard />} />
+                            <Route path="/transacoes" element={<Transacoes key={location.key} />} />
+                            <Route path="/relatorio" element={<Relatorios />} /> 
+                            <Route path="/agenda" element={<Agenda />} />
+                            <Route path="/configuracoes" element={<Configuracoes />} />
+                            <Route path="/meu-perfil" element={<MeuPerfil />} /> {/* ROTA MEU PERFIL */}
+                            
+                            {/* Rota de Detalhe Protegida */}
+                            <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
+                        </Route>
+                        
+                        {/* Rota de segurança para o caso de o ProfileGuard falhar (ou ser ignorado) */}
+                        <Route path="*" element={<Navigate to="/" />} />
+                    </Route>
+                    
+                </Routes>
+            </div>
+        </>
     );
 };
 
@@ -110,7 +122,7 @@ function App() {
     useEffect(() => {
         const timer = setTimeout(() => {
             setShowSplash(false);
-        }, 3000); 
+        }, 1000); 
 
         return () => clearTimeout(timer); 
     }, []);

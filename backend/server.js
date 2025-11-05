@@ -92,21 +92,33 @@ app.post('/auth/register', async (req, res) => {
 // Rota para Login de Usuário (CORREÇÃO FINAL DE ESTABILIDADE)
 // Rota para Login de Usuário (CORREÇÃO FINAL DE ESTABILIDADE)
 // Rota para Login de Usuário (CORRIGIDA para buscar e retornar o Tipo de Usuário)
+// Rota para Login de Usuário (FINALMENTE PROTEGIDA POR STATUS DE ATIVAÇÃO)
+// Rota para Login de Usuário (CORRIGIDA E SEGURA POR STATUS)
+// Rota para Login de Usuário (CORRIGIDA E SEGURA POR STATUS)
+// Rota para Login de Usuário (CORRIGIDA E SEGURA POR STATUS)
+// server.js - Rota para Login de Usuário (CORREÇÃO FINAL PARA REDIRECIONAMENTO)
 app.post('/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        // CORREÇÃO: Selecionamos também o campo 'tipo_usuario'
-        const sql = 'SELECT id, nome, email, password_hash, tipo_usuario FROM barbeiros WHERE email = ?';
+        const sql = 'SELECT id, nome, email, password_hash, tipo_usuario, status_ativacao FROM barbeiros WHERE email = ?';
         const [results] = await db.promise().query(sql, [email]);
         
         const user = results[0];
 
-        // 1. CHECAGEM ESSENCIAL
         if (!user || !user.password_hash) { 
             return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
 
+        // 1. CHECAGEM CRÍTICA: BLOQUEIA O ACESSO DE CONTAS PENDENTES
+        if (user.status_ativacao === 'pendente' || user.status_ativacao === null) {
+            // RETORNA 403 e o userId para que o Frontend possa redirecionar corretamente
+            return res.status(403).json({ 
+                error: 'Ativação pendente. Por favor, insira sua chave de licença.',
+                userId: user.id // <--- CRÍTICO: Retornamos o ID
+            });
+        }
+        
         // 2. Compara a Senha
         const SECRET_KEY = process.env.SECRET_KEY || 'sua_chave_super_secreta_para_o_tcc';
         const isMatch = await bcrypt.compare(password, user.password_hash);
@@ -116,7 +128,6 @@ app.post('/auth/login', async (req, res) => {
         }
 
         // 3. Sucesso: Gera o Token
-        // Incluímos o tipo_usuario no Token (para proteção de rotas) e na resposta (para uso imediato no frontend)
         const token = jwt.sign({ id: user.id, email: user.email, tipo: user.tipo_usuario }, SECRET_KEY, { expiresIn: '1h' });
         
         res.json({ 
@@ -124,12 +135,113 @@ app.post('/auth/login', async (req, res) => {
             token, 
             userId: user.id, 
             userName: user.nome,
-            userType: user.tipo_usuario // <--- ESSENCIAL: Retornando o tipo
+            userType: user.tipo_usuario
         });
 
     } catch (err) {
         console.error('Erro no login:', err);
         res.status(500).json({ error: 'Erro interno no servidor.' }); 
+    }
+});
+
+
+// server.js - Adicionar esta rota (após /auth/login)
+
+// Rota para Ativação de Conta (Verifica a chave mestra e atualiza o status do barbeiro)
+// server.js - ROTA DE ATIVAÇÃO CORRIGIDA
+// server.js - ROTA DE ATIVAÇÃO CORRIGIDA (GARANTINDO ASYNC/AWAIT)
+// server.js - ROTA DE ATIVAÇÃO CORRIGIDA (AGORA ACEITA userId como STRING)
+// server.js - ROTA DE ATIVAÇÃO FINAL E CORRIGIDA
+app.post('/auth/ativar-conta', async (req, res) => {
+    // userId é passado como string do frontend
+    const { userId, chaveAcesso } = req.body; 
+    
+    // 1. Validação de segurança dos dados recebidos
+    if (!userId || !chaveAcesso) {
+        return res.status(400).json({ error: 'ID do usuário e Chave de Acesso são obrigatórios.' });
+    }
+    
+    // A chave mestra deve ser a mesma usada no seu banco ou arquivo .env
+    const CHAVE_MESTRA_CORRETA = "BAR-BER-APLI-MASTER-ADIMIN25"; // USE A SUA CHAVE REAL AQUI!
+
+    try {
+        // 2. Verifica se a chave fornecida corresponde à chave mestra
+        if (chaveAcesso !== CHAVE_MESTRA_CORRETA) {
+            return res.status(401).json({ error: 'Chave de acesso inválida. Por favor, verifique.' });
+        }
+
+        // 3. Atualiza o status do Barbeiro para 'ativa'
+        // A SQL usa o `id` como parâmetro, que aceita a string do `userId`
+        const sqlUpdate = "UPDATE barbeiros SET status_ativacao = 'ativa' WHERE id = ? AND status_ativacao = 'pendente' AND tipo_usuario = 'barbeiro'";
+        const [updateResult] = await db.promise().query(sqlUpdate, [userId]); 
+
+        if (updateResult.affectedRows === 0) {
+            // Se nenhum usuário foi afetado, ou ele já estava ativo, ou não era barbeiro
+            return res.status(400).json({ error: 'O usuário não está pendente ou não foi encontrado para ativação.' });
+        }
+
+        // 4. Sucesso na Ativação
+        res.status(200).json({ message: 'Conta ativada com sucesso! Você pode fazer login agora.' });
+
+    } catch (err) {
+        // Se houver um erro de conexão com o banco ou sintaxe SQL
+        console.error('Erro fatal na ativação de conta:', err);
+        return res.status(500).json({ error: 'Erro interno ao tentar ativar a conta. Verifique o console do servidor.' });
+    }
+});
+
+
+// server.js - Adicionar estas rotas
+
+// Rota para Criar/Atualizar o Perfil do Barbeiro
+// É um POST para criação e pode ser usado como PUT para atualização, mas vamos usar POST simples
+app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf } = req.body;
+    
+    // Validação básica de campos obrigatórios (adapte se você tiver campos opcionais)
+    if (!nome_barbeiro || !nome_barbearia || !documento || !telefone || !rua || !numero || !bairro || !cep || !uf) {
+        return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser preenchidos.' });
+    }
+
+    try {
+        // Tenta inserir: se já existir, ele falha, e isso é um sinal de que o perfil já existe.
+        const sql = 'INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        
+        const [result] = await db.promise().query(sql, [barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf]);
+
+        res.status(201).json({ message: 'Perfil profissional criado com sucesso!' });
+
+    } catch (err) {
+        // Se a inserção falhou (ER_DUP_ENTRY) ou por outro erro, tratamos
+        if (err.code === 'ER_DUP_ENTRY') {
+             // Caso o perfil já exista (barbeiro_id é PK)
+             return res.status(409).json({ error: 'Este barbeiro já possui um perfil cadastrado.' });
+        }
+        console.error('Erro ao criar perfil:', err);
+        res.status(500).json({ error: 'Erro interno ao salvar perfil.' });
+    }
+});
+
+// Rota para Checar se o Perfil Existe (GET)
+app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    
+    try {
+        const sql = 'SELECT * FROM perfil_barbeiro WHERE barbeiro_id = ?';
+        const [results] = await db.promise().query(sql, [barbeiro_id]);
+
+        if (results.length > 0) {
+            // Perfil existe
+            return res.json({ profileExists: true, data: results[0] });
+        } else {
+            // Perfil não existe (deve ser redirecionado para o formulário)
+            return res.json({ profileExists: false });
+        }
+
+    } catch (err) {
+        console.error('Erro ao checar perfil:', err);
+        res.status(500).json({ error: 'Erro interno ao checar perfil.' });
     }
 });
 
