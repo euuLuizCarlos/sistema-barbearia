@@ -1,12 +1,11 @@
-// src/services/api.js - CÓDIGO FINAL COM INTERCEPTOR DE AUTENTICAÇÃO
+// src/services/api.js - CÓDIGO FINAL E CORRIGIDO PARA TOKEN
 import axios from 'axios';
 
-// Cria uma instância do axios configurada com a URL base da sua API
 const api = axios.create({
   baseURL: 'http://localhost:3000', 
 });
 
-// 1. CONFIGURAÇÃO DO INTERCEPTOR
+// CONFIGURAÇÃO DO INTERCEPTOR DE REQUISIÇÃO (SOLUÇÃO FINAL)
 api.interceptors.request.use(async (config) => {
     // Pega o token do localStorage
     const token = localStorage.getItem('userToken');
@@ -14,6 +13,11 @@ api.interceptors.request.use(async (config) => {
     // Se o token existir, adiciona o cabeçalho de Autorização
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Adiciona o cabeçalho Content-Type (Garantia)
+    if (config.method === 'post' || config.method === 'put') {
+        config.headers['Content-Type'] = 'application/json';
     }
 
     return config;

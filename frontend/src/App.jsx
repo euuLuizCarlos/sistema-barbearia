@@ -63,56 +63,55 @@ const Header = ({ toggleSidebar }) => {
 };
 
 
+// src/App.jsx - APENAS O BLOCO AppContent (ROTAS CORRIGIDAS)
+
 const AppContent = () => {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
-    const location = useLocation(); 
-    
-    const noNavRoutes = ['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro'];
-    const showHeader = !noNavRoutes.includes(location.pathname);
-    const showNavigation = !noNavRoutes.includes(location.pathname); // MANTIDO: Lógica de esconder
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+    const location = useLocation(); 
+    
+    const noNavRoutes = ['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro'];
+    const showHeader = !noNavRoutes.includes(location.pathname);
 
-    return (
-        <>
-            {showHeader && <Header toggleSidebar={toggleSidebar} />}
-            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+    return (
+        <>
+            {showHeader && <Header toggleSidebar={toggleSidebar} />}
+            <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
 
-            <div style={{ marginLeft: sidebarOpen ? '250px' : '0', transition: 'margin-left 0.3s' }}>
-                <Routes>
-                    
-                    {/* ROTAS PÚBLICAS */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/escolha-perfil" element={<EscolhaTipoUsuario />} />
-                    <Route path="/ativacao" element={<AtivacaoConta />} /> 
-                    <Route path="/register" element={<Register />} /> 
-                    
-                    {/* ROTAS PROTEGIDAS PELO LOGIN (PRIMEIRO NÍVEL) */}
-                    <Route element={<PrivateRoute />}>
-                        
-                        {/* ROTA EXCLUSIVA DE CADASTRO DE PERFIL (Para o ProfileGuard redirecionar) */}
-                        <Route path="/perfil/cadastro" element={<CadastroPerfilBarbeiro />} /> 
+            <div style={{ marginLeft: sidebarOpen ? '250px' : '0', transition: 'margin-left 0.3s' }}>
+                <Routes>
+                    
+                    {/* ROTAS PÚBLICAS */}
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/escolha-perfil" element={<EscolhaTipoUsuario />} />
+                    <Route path="/ativacao" element={<AtivacaoConta />} /> 
+                    <Route path="/register" element={<Register />} /> 
+                    
+                    {/* ROTAS PROTEGIDAS PELO LOGIN (PRIMEIRO NÍVEL) */}
+                    <Route element={<PrivateRoute />}>
+                        
+                        {/* ROTA EXCLUSIVA DE CADASTRO DE PERFIL (Para o ProfileGuard redirecionar) */}
+                        <Route path="/perfil/cadastro" element={<CadastroPerfilBarbeiro />} /> 
 
-                        {/* ROTAS PRINCIPAIS PROTEGIDAS PELO PROFILE GUARD (SEGUNDO NÍVEL DE SEGURANÇA) */}
-                        <Route element={<ProfileGuard />}> 
-                            <Route path="/" element={<Dashboard />} />
-                            <Route path="/transacoes" element={<Transacoes key={location.key} />} />
-                            <Route path="/relatorio" element={<Relatorios />} /> 
-                            <Route path="/agenda" element={<Agenda />} />
-                            <Route path="/configuracoes" element={<Configuracoes />} />
-                            <Route path="/meu-perfil" element={<MeuPerfil />} /> {/* ROTA MEU PERFIL */}
-                            
-                            {/* Rota de Detalhe Protegida */}
-                            <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
-                        </Route>
-                        
-                        {/* Rota de segurança para o caso de o ProfileGuard falhar (ou ser ignorado) */}
-                        <Route path="*" element={<Navigate to="/" />} />
-                    </Route>
-                    
-                </Routes>
-            </div>
-        </>
-    );
+                        {/* ROTAS PRINCIPAIS PROTEGIDAS PELO PROFILE GUARD (SEGUNDO NÍVEL) */}
+                        <Route element={<ProfileGuard />}> 
+                            {/* TODAS AS FERRAMENTAS DO BARBEIRO VÃO AQUI */}
+                            <Route path="/" element={<Dashboard />} />
+                            <Route path="/transacoes" element={<Transacoes key={location.key} />} />
+                            <Route path="/relatorio" element={<Relatorios />} /> 
+                            <Route path="/agenda" element={<Agenda />} />
+                            <Route path="/configuracoes" element={<Configuracoes />} />
+                            <Route path="/meu-perfil" element={<MeuPerfil />} />
+                            <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
+                        </Route>
+                    </Route>
+                    
+                    {/* Fallback de segurança */}
+                    <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+            </div>
+        </>
+    );
 };
 
 

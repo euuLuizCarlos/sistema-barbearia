@@ -1,4 +1,4 @@
-// src/components/Guards/ProfileGuard.jsx (CÓDIGO CORRIGIDO PARA FORÇAR REDIRECIONAMENTO)
+// src/components/Guards/ProfileGuard.jsx (CÓDIGO FINAL E CORRIGIDO - CHECA TOKEN ANTES DA API)
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, Outlet } from 'react-router-dom';
@@ -6,47 +6,46 @@ import api from '../../services/api';
 
 const ProfileGuard = () => {
     const { user, userType, isAuthenticated } = useAuth();
-    const [profileExists, setProfileExists] = useState(true); // Assumimos true para não travar o cliente
+    const [profileExists, setProfileExists] = useState(false); 
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const checkProfile = async () => {
-            // Só checa se for Barbeiro e estiver autenticado
-            if (isAuthenticated && userType === 'barbeiro') {
+            // Se não estiver logado ou for Cliente, permite (deixa o PrivateRoute cuidar)
+            if (!isAuthenticated || userType === 'cliente') {
+                setProfileExists(true);
+                setLoading(false);
+                return;
+            }
+            
+            // Checagem CRÍTICA APENAS para Barbeiro Autenticado
+            // Só executa a API se o token estiver disponível no contexto!
+            if (isAuthenticated && userType === 'barbeiro' && user.token) { // <-- CHECAGEM DE TOKEN AQUI
                 try {
-                    const response = await api.get('/perfil/barbeiro'); // Rota que criamos no backend
-                    
-                    if (response.data.profileExists) {
-                        setProfileExists(true);
-                    } else {
-                        // Perfil NÃO existe
-                        setProfileExists(false);
-                    }
+                    const response = await api.get('/perfil/barbeiro');
+                    setProfileExists(response.data.profileExists);
                 } catch (error) {
                     console.error('Erro ao checar perfil:', error);
-                    setProfileExists(false); // Assume que precisa cadastrar em caso de erro de API
+                    setProfileExists(false); 
                 }
-            } else {
-                // Cliente ou não logado: não precisa de checagem de perfil (perfil OK)
-                setProfileExists(true);
             }
             setLoading(false);
         };
 
         checkProfile();
-    }, [isAuthenticated, userType]); // Roda a checagem sempre que o usuário ou o login mudar
+    }, [isAuthenticated, userType, user?.token]); // Adicionamos user.token como dependência
 
     if (loading) {
         return <h2 style={{ padding: '50px', color: '#023047' }}>Verificando perfil...</h2>;
     }
     
-    // A LÓGICA CHAVE DE BLOQUEIO E REDIRECIONAMENTO
+    // LÓGICA CRÍTICA DE REDIRECIONAMENTO
     if (isAuthenticated && userType === 'barbeiro' && !profileExists) {
-        // Barbeiro logado, mas SEM PERFIL: Manda para o cadastro
+        // Barbeiro logado, mas SEM PERFIL: Manda para o cadastro obrigatório
         return <Navigate to="/perfil/cadastro" replace />;
     }
 
-    // Se o perfil existe (ou é cliente), permite o acesso ao Dashboard
+    // Se o perfil existe (ou é cliente), permite o acesso
     return <Outlet />;
 };
 
