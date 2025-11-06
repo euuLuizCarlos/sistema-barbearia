@@ -197,11 +197,12 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
     }
 
     try {
-        // SQL que faz INSERT OU UPDATE (ON DUPLICATE KEY UPDATE)
+        // SQL FINAL CORRIGIDO: Inclui nome_barbeiro no UPDATE
         const sql = `
             INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
+                nome_barbeiro = VALUES(nome_barbeiro),
                 nome_barbearia = VALUES(nome_barbearia),
                 documento = VALUES(documento),
                 telefone = VALUES(telefone),
@@ -223,7 +224,10 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
         res.status(200).json({ message: 'Perfil profissional salvo com sucesso!' });
 
     } catch (err) {
-        console.error('Erro ao salvar perfil:', err);
+        if (err.code === 'ER_DUP_ENTRY') {
+             return res.status(409).json({ error: 'Este barbeiro já possui um perfil cadastrado.' });
+        }
+        console.error('Erro ao criar perfil:', err);
         res.status(500).json({ error: 'Erro interno ao salvar perfil.' });
     }
 });

@@ -105,8 +105,14 @@ const MeuPerfil = () => {
 
     // Efeito para disparar a busca quando autenticado
     useEffect(() => {
+        // Se a autenticação estiver completa (isAuthenticated TRUE), dispara a busca.
         if (isAuthenticated) { 
-            fetchProfile();
+            // Adiciona um micro-delay para garantir que o Axios leia o token do localStorage
+            const timer = setTimeout(() => {
+                fetchProfile();
+            }, 50); // 50ms de atraso
+            
+            return () => clearTimeout(timer);
         }
     }, [isAuthenticated, fetchProfile]); 
     
@@ -167,49 +173,46 @@ const MeuPerfil = () => {
         setApiError(''); 
         setValidationErrors({});
 
-        // 1. Validação de Campos
-        let errors = {};
+        // Validação (mantida)
         const requiredFields = ['nome_barbearia', 'telefone', 'rua', 'numero', 'bairro', 'cep', 'uf', 'localidade', 'nome_barbeiro', 'documento'];
+        const hasRequiredErrors = requiredFields.some(field => !formData[field]);
 
-        requiredFields.forEach(field => {
-            if (!formData[field] || formData[field].trim() === '') {
-                errors[field] = 'Campo obrigatório.';
-            }
-        });
-
-        if (!validateCpfCnpj(formData.documento)) {
-            errors.documento = 'CPF/CNPJ inválido.';
-        }
-        if (!validateCep(formData.cep)) {
-            errors.cep = 'CEP inválido.';
-        }
-        
-        if (Object.keys(errors).length > 0) {
-            setValidationErrors(errors);
-            setApiError('Corrija os erros no formulário antes de salvar.');
-            setMessage('');
+        if (!validateCpfCnpj(formData.documento) || !validateCep(formData.cep) || hasRequiredErrors) {
+            setApiError('Preencha todos os campos obrigatórios e corrija o CEP/CPF/CNPJ.');
             return;
         }
-        
-        // 2. Envio para o Backend
+
         try {
-            // Remove a máscara antes de enviar para o DB
+            // 1. PREPARAÇÃO DOS DADOS LIMPOS
             const dadosParaEnviar = {
                 ...formData,
                 documento: formData.documento.replace(/\D/g, ''), 
                 cep: formData.cep.replace(/\D/g, ''), 
-                // barbeiro_id já é enviado automaticamente pelo authenticateToken no backend
             };
 
-            await api.post('/perfil/barbeiro', dadosParaEnviar); 
+            // 2. CORREÇÃO CRÍTICA: Pegamos o token AGORA
+            const token = localStorage.getItem('userToken');
+            
+            // 3. Chamada POST forçando o cabeçalho de Autorização manualmente
+            await api.post('/perfil/barbeiro', dadosParaEnviar, {
+                headers: {
+                    Authorization: `Bearer ${token}` 
+                }
+            }); 
             
             setMessage('Perfil atualizado com sucesso!');
             setIsEditing(false); // Volta para visualização
-            fetchProfile(); // Recarrega os dados
+            fetchProfile(); // Recarrega os dados para mostrar o novo valor
 
         } catch (err) {
-            const apiMessage = err.response?.data?.error || 'Erro ao atualizar. Verifique a conexão.';
-            setApiError(apiMessage);
+            let apiErrorMessage = err.response?.data?.error || 'Erro ao atualizar. Verifique sua conexão.';
+            
+            // Tratamento específico para TOKEN/FALHA DE SINCRONIZAÇÃO
+            if (err.response?.status === 403 || err.response?.status === 401) {
+                 apiErrorMessage = "Falha de Autenticação. Faça logout e login novamente.";
+            }
+
+            setApiError(apiErrorMessage);
         }
     };
     
