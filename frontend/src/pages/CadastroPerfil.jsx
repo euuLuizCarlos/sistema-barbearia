@@ -1,14 +1,19 @@
-// src/pages/CadastroPerfil.jsx (CÓDIGO FINAL DO FORMULÁRIO DE CADASTRO/EDIÇÃO)
+// src/pages/CadastroPerfil.jsx (CÓDIGO COMPLETO ATUALIZADO)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api'; 
 import axios from 'axios'; 
 import { useAuth } from '../contexts/AuthContext';
-import { FaSave, FaTimesCircle, FaUserCog } from 'react-icons/fa';
+// Importação dos ícones FaHome e FaTimesCircle
+import { FaSave, FaTimesCircle, FaUserCog, FaHome } from 'react-icons/fa'; 
 
 // --- FUNÇÕES DE MÁSCARA, VALIDAÇÃO E UFS (Mantenha ou importe) ---
-const UFs = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+const UFs = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
+    'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
+    'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+];
 
 const maskCep = (value) => { 
     if (!value) return ""; 
@@ -57,23 +62,22 @@ const CadastroPerfil = () => {
 
     // --- FUNÇÃO DE BUSCA (Para pré-preencher em caso de EDIÇÃO) ---
     const fetchProfileForEditing = useCallback(async () => {
-    // CORREÇÃO: SE userType não estiver pronto (null/undefined), sai sem travar.
-    if (userType !== 'barbeiro') {
-         // Se for cliente, não deve estar aqui, apenas retorna o loading
-         if (userType === 'cliente') { setLoading(false); return; }
-    }
+        if (userType !== 'barbeiro') {
+            if (userType === 'cliente') { setLoading(false); return; }
+        }
+        setLoading(true);
         try {
             const response = await api.get('/perfil/barbeiro');
             const { profileExists, data } = response.data;
 
             if (profileExists && data) {
-                // MODO EDIÇÃO: Preenche o formulário com os dados existentes
+                // MODO EDIÇÃO
                 data.documento = maskCpfCnpj(data.documento);
                 data.cep = maskCep(data.cep);
                 setFormData(data);
-                setIsEditingExisting(true); // O perfil existe, então estamos editando
+                setIsEditingExisting(true); 
             } else {
-                // MODO CADASTRO: Preenche apenas o nome do barbeiro
+                // MODO CADASTRO
                 setFormData({
                     nome_barbeiro: user?.userName || '', nome_barbearia: '', documento: '', telefone: '', rua: '', numero: '', bairro: '', complemento: '', cep: '', uf: '', localidade: ''
                 });
@@ -134,7 +138,6 @@ const CadastroPerfil = () => {
              return;
         }
 
-
         try {
             // 1. PREPARAÇÃO DOS DADOS LIMPOS
             const dadosParaEnviar = {
@@ -170,9 +173,30 @@ const CadastroPerfil = () => {
 
     return (
         <div style={{ maxWidth: '900px', margin: '30px auto', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h1 style={{ borderBottom: '2px solid #023047', paddingBottom: '10px', marginBottom: '30px', color: '#023047' }}>
+            
+            <h1 style={{ borderBottom: '2px solid #023047', paddingBottom: '10px', marginBottom: '30px', color: '#023047', position: 'relative' }}>
                 <FaUserCog style={{ verticalAlign: 'middle', marginRight: '10px' }} />
                 {isEditingExisting ? 'Edição de Perfil' : 'Cadastro Inicial de Perfil Profissional *'}
+
+                {/* BOTÃO VOLTAR AO DASHBOARD (NOVO) */}
+                <button 
+                    type="button" 
+                    onClick={() => navigate('/', { replace: true })} 
+                    style={{ 
+                        position: 'absolute', 
+                        right: '0', 
+                        top: '0',
+                        padding: '8px 15px', 
+                        backgroundColor: '#555', 
+                        color: '#fff', 
+                        border: 'none', 
+                        borderRadius: '5px', 
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                    }}
+                >
+                    <FaHome style={{ marginRight: '5px' }} /> Dashboard
+                </button>
             </h1>
             
             {message && <div style={{ color: 'green', marginBottom: '15px' }}>{message}</div>}
@@ -193,7 +217,7 @@ const CadastroPerfil = () => {
                             value={formData.documento || ''} 
                             onChange={handleChange} 
                             style={isEditingExisting ? disabledInputStyle : inputStyle}
-                            disabled={isEditingExisting} // Desabilita se for edição
+                            disabled={isEditingExisting}
                             required 
                         />
                         {validationErrors.documento && <div style={errorStyle}>{validationErrors.documento}</div>}
@@ -248,11 +272,11 @@ const CadastroPerfil = () => {
                         Salvar Alterações
                     </button>
                     
-                    {/* Botão de Cancelar: Só aparece se for Edição (Já existe perfil) */}
+                    {/* Botão de Cancelar: Aparece se for Edição (Volta para a tela de Detalhes) */}
                     {isEditingExisting && (
                         <button type="button" onClick={() => navigate('/meu-perfil', { replace: true })} style={{ padding: '12px 30px', backgroundColor: '#ccc', color: '#333', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
                             <FaTimesCircle style={{ marginRight: '10px' }} />
-                            Cancelar
+                            Cancelar Edição
                         </button>
                     )}
                 </div>

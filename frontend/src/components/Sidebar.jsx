@@ -16,8 +16,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { path: '/agenda', name: 'Agenda', icon: FaCalendarAlt, isBottom: false },
         { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
         // NOVO: Meu Perfil (Posicionado para o final do menu)
-        { path: '/meu-perfil', name: 'Meu Perfil', icon: FaUserAlt, isBottom: true },
-    ];
+        { path: '/meu-perfil', name: 'Meu Perfil', icon: FaUserAlt, isBottom: true }, // <--- DEVE SER ESTA ROTA
+];
 
     const style = {
         sidebar: {
