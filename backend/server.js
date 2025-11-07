@@ -8,9 +8,18 @@ const jwt = require('jsonwebtoken');
 
 dotenv.config();
 
+const corsOptions = {
+    // Permite requisições da porta 5173, que é o padrão do Vite
+    origin: 'http://localhost:5173', 
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // Crucial para o JWT
+    optionsSuccessStatus: 204
+};
+
 const app = express();
 app.use(bodyParser.json());
-app.use(cors());
+// 1. Aplica o CORS CORRETO
+app.use(cors(corsOptions));
 
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
 
@@ -167,14 +176,19 @@ app.post('/auth/ativar-conta', async (req, res) => {
 // server.js - Rotas de Perfil (RECONSTRUÍDAS)
 
 // Rota para Checar/Buscar o Perfil (GET) - Usado pelo ProfileGuard
+// server.js (Rota para Checar/Buscar o Perfil - GET)
+
 app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
+    // IMPORTANTE: req.user.id é o ID do barbeiro obtido do token JWT
+    const barbeiro_id = req.user.id; 
     
     try {
+        // Busca o perfil que tem o barbeiro_id igual ao ID logado
         const sql = 'SELECT * FROM perfil_barbeiro WHERE barbeiro_id = ?';
         const [results] = await db.promise().query(sql, [barbeiro_id]);
 
         if (results.length > 0) {
+            // Retorna o primeiro registro encontrado
             return res.json({ profileExists: true, data: results[0] });
         } else {
             return res.json({ profileExists: false });
