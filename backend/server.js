@@ -40,6 +40,20 @@ db.connect(err => {
     console.log('Conexão com o banco de dados MySQL estabelecida!');
 });
 
+async function getTaxaCartao() {
+    try {
+        // Usa o db.promise().query() para esperar o resultado
+        const [rows] = await db.promise().query('SELECT taxa FROM taxa_cartao WHERE id = 1');
+        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
+    } catch (e) {
+        console.error("Erro ao buscar taxa de cartão:", e);
+        return 0.00;
+    }
+}
+
+// Função para formatar a data para SQL (YYYY-MM-DD)
+const getTodayDate = () => new Date().toISOString().split('T')[0];
+
 // ==========================================================
 // MIDDLEWARE DE AUTENTICAÇÃO (VERIFICA O TOKEN)
 // ==========================================================
@@ -250,13 +264,209 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
 // ROTAS DE MOVIMENTAÇÕES FINANCEIRAS (CONTROLE DE CAIXA)
 // ==========================================================
 // Aplicando o middleware nas rotas que precisam de autenticação
-app.get('/movimentacoes', authenticateToken, (req, res) => { /* ... */ });
-app.post('/movimentacoes', authenticateToken, async (req, res) => { /* ... */ });
-app.get('/movimentacoes/:id', authenticateToken, (req, res) => { /* ... */ });
-app.put('/movimentacoes/:id', authenticateToken, (req, res) => { /* ... */ });
-app.delete('/movimentacoes/:id', authenticateToken, (req, res) => { /* ... */ });
-app.get('/saldo', authenticateToken, (req, res) => { /* ... */ });
-app.get('/totais/diarios', authenticateToken, (req, res) => { /* ... */ });
+app.post('/movimentacoes', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    let { descricao, valor, tipo, categoria, forma_pagamento } = req.body;
+    valor = parseFloat(valor);
+
+    if (!valor || valor <= 0 || !tipo || !descricao || !forma_pagamento) {
+        return res.status(400).json({ error: "Campos obrigatórios ausentes." });
+    }
+
+    try {
+        let valorFinal = valor;
+        let categoriaFinal = categoria || 'servico'; 
+
+        // 1. APLICAÇÃO DA TAXA DO CARTÃO (Se for Receita com Cartão)
+        if (forma_pagamento === 'cartao' && tipo === 'receita') {
+            const taxaPercentual = await getTaxaCartao();
+            if (taxaPercentual > 0) {
+                const taxaValor = valor * (taxaPercentual / 100);
+                valorFinal = valor - taxaValor;
+                
+                // Registra a DESPESA (Taxa) separadamente
+                const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
+                await db.promise().query(sqlInsertTaxa, [
+                    barbeiro_id,
+                    `Taxa Cartão Ref: ${descricao.substring(0, 50)}`,
+                    taxaValor,
+                    'despesa',
+                    'taxa',
+                    'cartao'
+                ]);
+            }
+        }
+
+        // 2. Inserção da Movimentação Principal
+        const sqlInsertPrincipal = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
+        const [result] = await db.promise().query(sqlInsertPrincipal, [
+            barbeiro_id,
+            descricao,
+            valorFinal,
+            tipo,
+            categoriaFinal,
+            forma_pagamento
+        ]);
+
+        return res.status(201).json({ id: result.insertId, message: "Movimentação registrada com sucesso!" });
+
+    } catch (error) {
+        console.error("Erro ao registrar movimentação:", error);
+        return res.status(500).json({ error: "Erro interno ao salvar movimentação." });
+    }
+});
+
+
+// Rota de LISTAGEM DO DIA (GET /movimentacoes)
+app.get('/movimentacoes', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const today = getTodayDate();
+
+    try {
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND DATE(data_hora) = ? ORDER BY data_hora DESC';
+        const [movimentacoes] = await db.promise().query(sql, [barbeiro_id, today]);
+
+        return res.json(movimentacoes);
+    } catch (error) {
+        console.error("Erro ao listar movimentações:", error);
+        return res.status(500).json({ error: "Erro interno ao listar." });
+    }
+});
+app.get('/movimentacoes/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const barbeiro_id = req.user.id;
+
+    try {
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE id = ? AND barbeiro_id = ?';
+        const [movimentacao] = await db.promise().query(sql, [id, barbeiro_id]);
+
+        if (movimentacao.length === 0) {
+            return res.status(404).json({ error: "Movimentação não encontrada ou acesso negado." });
+        }
+
+        // Retorna o primeiro (e único) resultado
+        return res.json(movimentacao[0]);
+
+    } catch (error) {
+        console.error("Erro ao buscar detalhe da movimentação:", error);
+        res.status(500).json({ error: "Erro interno ao buscar detalhe." });
+    }
+});
+
+
+// Rota de EDIÇÃO (PUT /movimentacoes/:id)
+app.put('/movimentacoes/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const barbeiro_id = req.user.id;
+    const { descricao, valor, tipo, categoria, forma_pagamento } = req.body;
+    
+    // Validação básica
+    if (!valor || !tipo) {
+        return res.status(400).json({ error: "Valor e tipo são obrigatórios para edição." });
+    }
+    
+    // NOTA: Para simplificar o TCC, a edição não recalcula a taxa de cartão automaticamente.
+    // Ela apenas atualiza os valores que o usuário enviou do frontend.
+
+    try {
+        const sql = `
+            UPDATE movimentacoes_financeiras SET
+            descricao = ?, valor = ?, tipo = ?, categoria = ?, forma_pagamento = ?
+            WHERE id = ? AND barbeiro_id = ?
+        `;
+        const [result] = await db.promise().query(sql, [
+            descricao,
+            parseFloat(valor),
+            tipo,
+            categoria,
+            forma_pagamento,
+            id,
+            barbeiro_id
+        ]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Movimentação não encontrada ou você não tem permissão para editar." });
+        }
+
+        res.status(200).json({ message: "Movimentação atualizada com sucesso." });
+
+    } catch (error) {
+        console.error("Erro ao atualizar movimentação:", error);
+        res.status(500).json({ error: "Erro interno ao atualizar movimentação." });
+    }
+});
+
+// Rota de EXCLUSÃO (DELETE /movimentacoes/:id)
+app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const barbeiro_id = req.user.id;
+
+    try {
+        const sql = 'DELETE FROM movimentacoes_financeiras WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.promise().query(sql, [id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Movimentação não encontrada ou você não tem permissão para excluir." });
+        }
+
+        res.status(200).json({ message: "Movimentação excluída com sucesso." });
+
+    } catch (error) {
+        console.error("Erro ao excluir movimentação:", error);
+        res.status(500).json({ error: "Erro interno ao excluir movimentação." });
+    }
+});
+
+app.get('/saldo', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const today = getTodayDate();
+
+    try {
+        const sql = `
+            SELECT
+                SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total
+            FROM movimentacoes_financeiras
+            WHERE barbeiro_id = ? AND DATE(data_hora) = ?
+        `;
+        const [saldo] = await db.promise().query(sql, [barbeiro_id, today]);
+        const resultado = saldo[0];
+
+        return res.json({
+            saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erro ao calcular saldo:", error);
+        return res.status(500).json({ error: "Erro interno." });
+    }
+});
+
+
+app.get('/totais/diarios', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const today = getTodayDate();
+
+    try {
+        const sql = `
+            SELECT
+                SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total,
+                SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total
+            FROM movimentacoes_financeiras
+            WHERE barbeiro_id = ? AND DATE(data_hora) = ?
+        `;
+        const [totais] = await db.promise().query(sql, [barbeiro_id, today]);
+        const resultado = totais[0];
+
+        return res.json({
+            receita_total: parseFloat(resultado.receita_total || 0).toFixed(2),
+            despesa_total: parseFloat(resultado.despesa_total || 0).toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erro ao calcular totais diários:", error);
+        return res.status(500).json({ error: "Erro interno." });
+    }
+});
 app.get('/relatorio/mensal/:ano/:mes', authenticateToken, (req, res) => { /* ... */ });
 app.get('/relatorio/diario/:data', authenticateToken, (req, res) => { /* ... */ });
 app.get('/relatorio/anual/:ano', authenticateToken, (req, res) => { /* ... */ });
@@ -265,13 +475,13 @@ app.get('/relatorio/anual/:ano', authenticateToken, (req, res) => { /* ... */ })
 // ==========================================================
 // ROTAS DE CLIENTES E AGENDAMENTO
 // ==========================================================
-app.get('/clientes', authenticateToken, (req, res) => { /* ... */ });
-app.get('/barbeiros', authenticateToken, (req, res) => { /* ... */ });
-app.post('/clientes', authenticateToken, (req, res) => { /* ... */ });
-app.post('/agendamentos', authenticateToken, (req, res) => { /* ... */ });
-app.get('/agendamentos', authenticateToken, (req, res) => { /* ... */ });
-app.put('/agendamentos/:id', authenticateToken, (req, res) => { /* ... */ });
-app.delete('/agendamentos/:id', authenticateToken, (req, res) => { /* ... */ });
+app.get('/clientes', authenticateToken, (req, res) => { res.status(501).json({ error: "Clientes não implementado." }); });
+app.get('/barbeiros', authenticateToken, (req, res) => { res.status(501).json({ error: "Barbeiros não implementado." }); });
+app.post('/clientes', authenticateToken, (req, res) => { res.status(501).json({ error: "Cadastro de Cliente não implementado." }); });
+app.post('/agendamentos', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento POST não implementado." }); });
+app.get('/agendamentos', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento GET não implementado." }); });
+app.put('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento PUT não implementado." }); });
+app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento DELETE não implementado." }); });
 
 
 const PORT = 3000;

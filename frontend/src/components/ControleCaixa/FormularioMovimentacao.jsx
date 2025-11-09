@@ -1,45 +1,44 @@
 // src/components/ControleCaixa/FormularioMovimentacao.jsx (CÓDIGO FINAL MULTI-TENANT)
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { useAuth } from '../../contexts/AuthContext'; // <--- IMPORTAMOS O HOOK DE AUTENTICAÇÃO
+import { useAuth } from '../../contexts/AuthContext'; 
 
-// Recebe os dados do item a ser editado (movimentacaoData) e a função de cancelar
-const FormularioMovimentacao = ({ onMovimentacaoAdicionada, movimentacaoData, onCancelEdit }) => {
+const FormularioMovimentacao = ({ 
+    onMovimentacaoAdicionada, 
+    movimentacaoData, 
+    onCancelEdit 
+}) => {
   
-  const { user } = useAuth(); // <--- OBTEMOS O USUÁRIO LOGADO
-  const loggedInBarbeiroId = user ? user.userId : 0; // Pega o ID do usuário (0 se não logado)
+  const { user } = useAuth();
+  const loggedInBarbeiroId = user ? user.userId : 0;
 
-  // Estado inicial com todos os campos necessários
-  const [formData, setFormData] = useState({
-    barbeiro_id: loggedInBarbeiroId, // <--- USA O ID LOGADO AQUI
-    descricao: '',
-    valor: '',
-    tipo: 'receita', 
-    categoria: 'servico', 
-    forma_pagamento: 'dinheiro', 
-  });
+  // 🚨 CORREÇÃO 1: Definir o estado inicial como uma função acessível
+  const getInitialState = (barbeiroId) => ({
+    barbeiro_id: barbeiroId,
+    descricao: '',
+    valor: '',
+    tipo: 'receita',
+    categoria: 'servico',
+    forma_pagamento: 'dinheiro',
+  });
+
+  // Estado inicial: Chama a função para garantir que o ID esteja correto
+  const [formData, setFormData] = useState(getInitialState(loggedInBarbeiroId));
   
-  // Efeito que preenche o formulário quando um item é selecionado para edição
+  // 🚨 CORREÇÃO 2: Ajustar o useEffect para usar a função getInitialState
   useEffect(() => {
     if (movimentacaoData) {
-        // Se há dados, preenche o formulário com o item que veio do App.jsx
+        // Se há dados, preenche o formulário para EDIÇÃO
         setFormData({
             ...movimentacaoData,
             valor: String(movimentacaoData.valor),
-            barbeiro_id: loggedInBarbeiroId // Mantém o ID logado
+            barbeiro_id: loggedInBarbeiroId
         });
     } else {
-        // Se não há dados, zera o formulário para uma nova criação
-        setFormData({
-            barbeiro_id: loggedInBarbeiroId, // <--- USA O ID LOGADO AQUI
-            descricao: '',
-            valor: '',
-            tipo: 'receita',
-            categoria: 'servico',
-            forma_pagamento: 'dinheiro',
-        });
+        // Se não há dados, zera o formulário para CRIAÇÃO
+        setFormData(getInitialState(loggedInBarbeiroId));
     }
-  }, [movimentacaoData, loggedInBarbeiroId]); // Adiciona loggedInBarbeiroId como dependência
+  }, [movimentacaoData, loggedInBarbeiroId]);
 
   // Função para atualizar o estado quando o valor de um campo muda
   const handleChange = (e) => {
@@ -51,34 +50,36 @@ const FormularioMovimentacao = ({ onMovimentacaoAdicionada, movimentacaoData, on
   const handleSubmit = async (e) => {
     e.preventDefault(); 
     
-    if (!user) { // Proteção extra: não envia se não estiver logado
-        alert('Erro: Usuário não logado. Faça o login novamente.');
-        return;
-    }
+    if (!user) {
+        alert('Erro: Usuário não logado. Faça o login novamente.');
+        return;
+    }
 
     const dadosParaEnviar = {
         ...formData,
         valor: parseFloat(formData.valor),
-        barbeiro_id: loggedInBarbeiroId, // Garante que o ID certo está no payload
+        barbeiro_id: loggedInBarbeiroId,
     };
 
     try {
-        let response;
         const isEditing = !!movimentacaoData;
         
         if (isEditing) {
             // Requisição PUT se estiver editando
-            response = await api.put(`/movimentacoes/${movimentacaoData.id}`, dadosParaEnviar);
+            await api.put(`/movimentacoes/${movimentacaoData.id}`, dadosParaEnviar);
             alert('Movimentação atualizada com sucesso!');
+            onCancelEdit(); // Volta o formulário para o modo Criação
         } else {
             // Requisição POST se estiver criando
-            response = await api.post('/movimentacoes', dadosParaEnviar);
+            await api.post('/movimentacoes', dadosParaEnviar);
             alert('Movimentação adicionada com sucesso!');
+            
+            // 🚨 CORREÇÃO: Usar a função getInitialState para resetar
+            setFormData(getInitialState(loggedInBarbeiroId));
         }
 
-        // Limpa e recarrega após sucesso
-        onCancelEdit(); // Zera o formulário
-        onMovimentacaoAdicionada(); // Recarrega a lista
+        // 🚨 AÇÃO CHAVE: Força a recarga da lista e totais no componente pai
+        onMovimentacaoAdicionada();
         
     } catch (error) {
       console.error('Erro:', error.response ? error.response.data : error.message);

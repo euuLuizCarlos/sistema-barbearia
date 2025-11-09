@@ -256,9 +256,12 @@ const CadastroPerfil = () => {
                         
                         <label>UF *</label>
                         <select name="uf" value={formData.uf || ''} onChange={handleChange} style={inputStyle} required>
-                            <option value="">Selecione a UF</option>
-                            {UFs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
-                        </select>
+    <option value="">Selecione a UF</option>
+
+    {/* Procure por qualquer outra linha de map aqui! */}
+
+    {UFs.map(uf => <option key={uf} value={uf}>{uf}</option>)} 
+</select>
                         {validationErrors.uf && <div style={errorStyle}>{validationErrors.uf}</div>}
                         
                         <label>Complemento (Opcional)</label>
