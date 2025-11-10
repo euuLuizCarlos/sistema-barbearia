@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise'); // Mude para /promise para usar async/await nativamente
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -23,27 +23,34 @@ app.use(cors(corsOptions));
 
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
 
+// Conexão com o banco de dados (usando promessas)
+// server.js (Substitua as linhas 37-51)
 
-// Conexão com o banco de dados
-const db = mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME
+// Conexão com o banco de dados (usando um Pool de Promessas)
+const db = mysql.createPool({ 
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
-db.connect(err => {
-    if (err) {
-        console.error('Erro ao conectar ao banco de dados:', err);
-        return;
-    }
-    console.log('Conexão com o banco de dados MySQL estabelecida!');
-});
+// Teste de conexão:
+db.getConnection()
+    .then(connection => {
+        console.log('Conexão com o banco de dados MySQL estabelecida!');
+        connection.release();
+    })
+    .catch(err => {
+        console.error('Erro ao conectar ao banco de dados:', err);
+        // Não precisamos de db.connect() e db.promise() separadamente.
+    });
 
+
+
+// Nota: A função getTaxaCartao deve ser atualizada para usar 'db.query' já que agora é um Pool de Promessas.
 async function getTaxaCartao() {
     try {
-        // Usa o db.promise().query() para esperar o resultado
-        const [rows] = await db.promise().query('SELECT taxa FROM taxa_cartao WHERE id = 1');
+        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE id = 1');
         return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
     } catch (e) {
         console.error("Erro ao buscar taxa de cartão:", e);
@@ -54,25 +61,33 @@ async function getTaxaCartao() {
 // Função para formatar a data para SQL (YYYY-MM-DD)
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
+const getStartOfDay = () => {
+    const today = new Date();
+    // Zera o tempo para 00:00:00 na hora local do servidor (Brasil/Node)
+    today.setHours(0, 0, 0, 0); 
+    // Formata como string DATETIME do MySQL (Ex: '2025-11-09 00:00:00')
+    return today.toISOString().slice(0, 19).replace('T', ' '); 
+};
+
 // ==========================================================
 // MIDDLEWARE DE AUTENTICAÇÃO (VERIFICA O TOKEN)
 // ==========================================================
 
 const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; 
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; 
 
-    if (token == null) {
-        return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
-    }
+    if (token == null) {
+        return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
+    }
 
-    jwt.verify(token, SECRET_KEY, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Token inválido ou expirado.' });
-        }
-        req.user = user;
-        next(); 
-    });
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Token inválido ou expirado.' });
+        }
+        req.user = user;
+        next(); 
+    });
 };
 
 
@@ -82,27 +97,27 @@ const authenticateToken = (req, res, next) => {
 
 // Rota para Cadastro de Novo Usuário (Barbeiro ou Cliente)
 app.post('/auth/register', async (req, res) => {
-    const { nome, email, password, tipo_usuario } = req.body; 
-    
-    if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
-        return res.status(400).json({ error: 'Todos os campos, incluindo o tipo de usuário, são obrigatórios.' });
-    }
+    const { nome, email, password, tipo_usuario } = req.body; 
+    
+    if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
+        return res.status(400).json({ error: 'Todos os campos, incluindo o tipo de usuário, são obrigatórios.' });
+    }
 
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario) VALUES (?, ?, ?, ?)';
-        
-        const [result] = await db.promise().query(sql, [nome, email, hashedPassword, tipo_usuario]);
-        
-        res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: result.insertId, userName: nome });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario) VALUES (?, ?, ?, ?)';
+        
+        const [result] = await db.query(sql, [nome, email, hashedPassword, tipo_usuario]);
+        
+        res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: result.insertId, userName: nome });
 
-    } catch (err) {
-        if (err.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ error: 'Email já está em uso.' });
-        }
-        console.error('Erro no registro:', err);
-        res.status(500).json({ error: 'Erro interno no servidor.' });
-    }
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'Email já está em uso.' });
+        }
+        console.error('Erro no registro:', err);
+        res.status(500).json({ error: 'Erro interno no servidor.' });
+    }
 });
 
 // Rota para Login de Usuário (CHECA O STATUS DE ATIVAÇÃO)
@@ -111,7 +126,7 @@ app.post('/auth/login', async (req, res) => {
     
     try {
         const sql = 'SELECT id, nome, email, password_hash, tipo_usuario, status_ativacao FROM barbeiros WHERE email = ?';
-        const [results] = await db.promise().query(sql, [email]);
+        const [results] = await db.query(sql, [email]);
         
         const user = results[0];
 
@@ -167,7 +182,7 @@ app.post('/auth/ativar-conta', async (req, res) => {
         }
 
         const sqlUpdate = "UPDATE barbeiros SET status_ativacao = 'ativa' WHERE id = ? AND status_ativacao = 'pendente' AND tipo_usuario = 'barbeiro'";
-        const [updateResult] = await db.promise().query(sqlUpdate, [userId]); 
+        const [updateResult] = await db.query(sqlUpdate, [userId]); 
 
         if (updateResult.affectedRows === 0) {
             return res.status(400).json({ error: 'O usuário não está pendente ou não foi encontrado para ativação.' });
@@ -186,23 +201,15 @@ app.post('/auth/ativar-conta', async (req, res) => {
 // ROTAS DE PERFIL E CADASTRO OBRIGATÓRIO (MIDDLEWARE INSERIDO DIRETAMENTE)
 // ==========================================================
 
-// Rota para Criar/Atualizar o Perfil do Barbeiro (POST/PUT)
-// server.js - Rotas de Perfil (RECONSTRUÍDAS)
-
 // Rota para Checar/Buscar o Perfil (GET) - Usado pelo ProfileGuard
-// server.js (Rota para Checar/Buscar o Perfil - GET)
-
 app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
-    // IMPORTANTE: req.user.id é o ID do barbeiro obtido do token JWT
     const barbeiro_id = req.user.id; 
     
     try {
-        // Busca o perfil que tem o barbeiro_id igual ao ID logado
         const sql = 'SELECT * FROM perfil_barbeiro WHERE barbeiro_id = ?';
-        const [results] = await db.promise().query(sql, [barbeiro_id]);
+        const [results] = await db.query(sql, [barbeiro_id]);
 
         if (results.length > 0) {
-            // Retorna o primeiro registro encontrado
             return res.json({ profileExists: true, data: results[0] });
         } else {
             return res.json({ profileExists: false });
@@ -226,8 +233,7 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
 
     try {
         // SQL FINAL CORRIGIDO: Inclui nome_barbeiro no UPDATE
-        const sql = `
-            INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) 
+        const sql = `INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
                 nome_barbeiro = VALUES(nome_barbeiro),
@@ -240,12 +246,11 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
                 complemento = VALUES(complemento),
                 cep = VALUES(cep),
                 uf = VALUES(uf),
-                localidade = VALUES(localidade)
-        `;
+                localidade = VALUES(localidade)`;
         
         const finalComplemento = complemento === '' ? null : complemento; 
 
-        await db.promise().query(sql, [
+        await db.query(sql, [
             barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, finalComplemento, cep, uf, localidade
         ]);
 
@@ -286,7 +291,7 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
                 
                 // Registra a DESPESA (Taxa) separadamente
                 const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
-                await db.promise().query(sqlInsertTaxa, [
+                await db.query(sqlInsertTaxa, [
                     barbeiro_id,
                     `Taxa Cartão Ref: ${descricao.substring(0, 50)}`,
                     taxaValor,
@@ -299,7 +304,7 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 
         // 2. Inserção da Movimentação Principal
         const sqlInsertPrincipal = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
-        const [result] = await db.promise().query(sqlInsertPrincipal, [
+        const [result] = await db.query(sqlInsertPrincipal, [
             barbeiro_id,
             descricao,
             valorFinal,
@@ -319,14 +324,16 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 
 // Rota de LISTAGEM DO DIA (GET /movimentacoes)
 app.get('/movimentacoes', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
-    const today = getTodayDate();
+    const barbeiro_id = req.user.id;
+    const startOfDay = getStartOfDay(); // <--- Pega a meia-noite de hoje
 
-    try {
-        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND DATE(data_hora) = ? ORDER BY data_hora DESC';
-        const [movimentacoes] = await db.promise().query(sql, [barbeiro_id, today]);
+   try {
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? ORDER BY data_hora DESC';
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
 
-        return res.json(movimentacoes);
+        // 🚨 CORREÇÃO: Retorna o array de resultados (rows)
+        return res.json(rows); 
+        
     } catch (error) {
         console.error("Erro ao listar movimentações:", error);
         return res.status(500).json({ error: "Erro interno ao listar." });
@@ -338,7 +345,7 @@ app.get('/movimentacoes/:id', authenticateToken, async (req, res) => {
 
     try {
         const sql = 'SELECT * FROM movimentacoes_financeiras WHERE id = ? AND barbeiro_id = ?';
-        const [movimentacao] = await db.promise().query(sql, [id, barbeiro_id]);
+        const [movimentacao] = await db.query(sql, [id, barbeiro_id]);
 
         if (movimentacao.length === 0) {
             return res.status(404).json({ error: "Movimentação não encontrada ou acesso negado." });
@@ -365,16 +372,9 @@ app.put('/movimentacoes/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "Valor e tipo são obrigatórios para edição." });
     }
     
-    // NOTA: Para simplificar o TCC, a edição não recalcula a taxa de cartão automaticamente.
-    // Ela apenas atualiza os valores que o usuário enviou do frontend.
-
     try {
-        const sql = `
-            UPDATE movimentacoes_financeiras SET
-            descricao = ?, valor = ?, tipo = ?, categoria = ?, forma_pagamento = ?
-            WHERE id = ? AND barbeiro_id = ?
-        `;
-        const [result] = await db.promise().query(sql, [
+        const sql = `UPDATE movimentacoes_financeiras SET descricao = ?, valor = ?, tipo = ?, categoria = ?, forma_pagamento = ? WHERE id = ? AND barbeiro_id = ?`;
+        const [result] = await db.query(sql, [
             descricao,
             parseFloat(valor),
             tipo,
@@ -403,7 +403,7 @@ app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
 
     try {
         const sql = 'DELETE FROM movimentacoes_financeiras WHERE id = ? AND barbeiro_id = ?';
-        const [result] = await db.promise().query(sql, [id, barbeiro_id]);
+        const [result] = await db.query(sql, [id, barbeiro_id]);
 
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: "Movimentação não encontrada ou você não tem permissão para excluir." });
@@ -419,21 +419,18 @@ app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
 
 app.get('/saldo', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    const today = getTodayDate();
+    const startOfDay = getStartOfDay();
 
     try {
-        const sql = `
-            SELECT
-                SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total
-            FROM movimentacoes_financeiras
-            WHERE barbeiro_id = ? AND DATE(data_hora) = ?
-        `;
-        const [saldo] = await db.promise().query(sql, [barbeiro_id, today]);
-        const resultado = saldo[0];
+        // SQL em linha e limpo (Corrigido o problema de sintaxe)
+        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
+        
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
+    const resultado = rows[0];
 
         return res.json({
-            saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
-        });
+        saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
+    })
 
     } catch (error) {
         console.error("Erro ao calcular saldo:", error);
@@ -444,18 +441,14 @@ app.get('/saldo', authenticateToken, async (req, res) => {
 
 app.get('/totais/diarios', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    const today = getTodayDate();
+    const startOfDay = getStartOfDay();
 
     try {
-        const sql = `
-            SELECT
-                SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total,
-                SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total
-            FROM movimentacoes_financeiras
-            WHERE barbeiro_id = ? AND DATE(data_hora) = ?
-        `;
-        const [totais] = await db.promise().query(sql, [barbeiro_id, today]);
-        const resultado = totais[0];
+        // SQL em linha e limpo (Corrigido o problema de sintaxe)
+        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total, SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
+        
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]);
+        const resultado = rows[0];
 
         return res.json({
             receita_total: parseFloat(resultado.receita_total || 0).toFixed(2),
@@ -467,13 +460,13 @@ app.get('/totais/diarios', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: "Erro interno." });
     }
 });
-app.get('/relatorio/mensal/:ano/:mes', authenticateToken, (req, res) => { /* ... */ });
-app.get('/relatorio/diario/:data', authenticateToken, (req, res) => { /* ... */ });
-app.get('/relatorio/anual/:ano', authenticateToken, (req, res) => { /* ... */ });
 
+app.get('/relatorio/mensal/:ano/:mes', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Mensal não implementado." }); });
+app.get('/relatorio/diario/:data', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Diário não implementado." }); });
+app.get('/relatorio/anual/:ano', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Anual não implementado." }); });
 
 // ==========================================================
-// ROTAS DE CLIENTES E AGENDAMENTO
+// ROTAS DE CLIENTES E AGENDAMENTO (stubs)
 // ==========================================================
 app.get('/clientes', authenticateToken, (req, res) => { res.status(501).json({ error: "Clientes não implementado." }); });
 app.get('/barbeiros', authenticateToken, (req, res) => { res.status(501).json({ error: "Barbeiros não implementado." }); });
@@ -486,5 +479,5 @@ app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(50
 
 const PORT = 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
