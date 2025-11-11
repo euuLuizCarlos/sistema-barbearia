@@ -1,21 +1,26 @@
-// src/services/api.js (CÓDIGO ROBUSTO E FINAL)
 import axios from 'axios';
 
 const api = axios.create({
   baseURL: 'http://localhost:3000', 
 });
 
-// CONFIGURAÇÃO DO INTERCEPTOR DE REQUISIÇÃO (GARANTE QUE O TOKEN É INSERIDO)
-api.interceptors.request.use((config) => { 
-    const token = localStorage.getItem('userToken');
+// 🚨 NOVO INTERCEPTOR PARA TRATAMENTO DE UPLOAD (Content-Type) 🚨
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('userToken');
 
-    if (token && !config.headers.Authorization) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
 
-    config.headers['Content-Type'] = 'application/json';
+    // Garante que APENAS dados que NÃO são arquivos (FormData) usem JSON
+    if (!(config.data instanceof FormData)) {
+        config.headers['Content-Type'] = 'application/json';
+    } else {
+        // Se for FormData, o Content-Type é deixado vazio para o browser definir multipart/form-data
+        delete config.headers['Content-Type']; 
+    }
 
-    return config;
+    return config;
 });
 
 export default api;

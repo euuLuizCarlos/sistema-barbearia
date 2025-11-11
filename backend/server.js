@@ -1,10 +1,15 @@
 const express = require('express');
-const mysql = require('mysql2/promise'); // Mude para /promise para usar async/await nativamente
+const mysql = require('mysql2/promise');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
+// 🚨 NOVOS REQUIRES:
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+// ------------------
 
 dotenv.config();
 
@@ -21,10 +26,42 @@ app.use(bodyParser.json());
 // 1. Aplica o CORS CORRETO
 app.use(cors(corsOptions));
 
+// -------------------------------------------------------------
+// 🚨 CONFIGURAÇÃO CRÍTICA DO MULTER (POSIÇÃO CORRETA) 🚨
+// -------------------------------------------------------------
+
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
 
-// Conexão com o banco de dados (usando promessas)
-// server.js (Substitua as linhas 37-51)
+// --- Configuração de Upload (Multer) ---
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+    console.log('Diretório de uploads criado.');
+}
+
+// Configuração de Armazenamento
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir); // Salva na pasta 'uploads'
+    },
+    filename: (req, file, cb) => {
+        // Renomeia o arquivo para ser único (sem depender de req.user aqui)
+        const ext = path.extname(file.originalname);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, `foto-${uniqueSuffix}${ext}`); 
+    }
+});
+
+// Middleware para processar o upload de uma única foto de perfil
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
+}).single('foto_perfil'); // Nome do campo no frontend
+
+// Rota para servir as imagens estaticamente
+app.use('/uploads', express.static(uploadsDir));
+
+// -------------------------------------------------------------
 
 // Conexão com o banco de dados (usando um Pool de Promessas)
 const db = mysql.createPool({ 
@@ -42,22 +79,19 @@ db.getConnection()
     })
     .catch(err => {
         console.error('Erro ao conectar ao banco de dados:', err);
-        // Não precisamos de db.connect() e db.promise() separadamente.
     });
-
-
 
 // Nota: A função getTaxaCartao deve ser atualizada para usar 'db.query' já que agora é um Pool de Promessas.
 async function getTaxaCartao(barbeiroId) {
 // 🚨 CORRIGIDO: Agora aceita o parâmetro barbeiroId
-    try {
-        // A consulta usa o ID do barbeiro logado (multi-tenant)
-        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?', [barbeiroId]);
-        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
-    } catch (e) {
-        console.error("Erro ao buscar taxa de cartão no cálculo:", e);
-        return 0.00;
-    }
+    try {
+        // A consulta usa o ID do barbeiro logado (multi-tenant)
+        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?', [barbeiroId]);
+        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
+    } catch (e) {
+        console.error("Erro ao buscar taxa de cartão no cálculo:", e);
+        return 0.00;
+    }
 }
 
 // Função para formatar a data para SQL (YYYY-MM-DD)
@@ -199,22 +233,54 @@ app.post('/auth/ativar-conta', async (req, res) => {
 });
 
 
+// Rota para EXCLUSÃO DA CONTA (Deleta o registro do barbeiro logado)
+app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const userEmail = req.user.email;
+    
+    try {
+        const sql = 'DELETE FROM barbeiros WHERE id = ?';
+        const [result] = await db.query(sql, [barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Conta não encontrada ou já excluída." });
+        }
+        
+        console.log(`Conta do Barbeiro ${userEmail} (ID: ${barbeiro_id}) excluída com sucesso.`);
+        
+        return res.status(200).json({ message: "Conta excluída permanentemente. Redirecionando..." });
+
+    } catch (err) {
+        console.error('Erro na exclusão de conta (Provável falha de FOREIGN KEY):', err);
+        return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
+    }
+});
+
+
 // ==========================================================
-// ROTAS DE PERFIL E CADASTRO OBRIGATÓRIO (MIDDLEWARE INSERIDO DIRETAMENTE)
+// ROTAS DE PERFIL E CADASTRO OBRIGATÓRIO (COM MULTER INTEGRADO)
 // ==========================================================
 
-// Rota para Checar/Buscar o Perfil (GET) - Usado pelo ProfileGuard
+// Rota para Checar/Buscar o Perfil (GET) - Inclui o campo foto_perfil
 app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id; 
     
     try {
-        const sql = 'SELECT * FROM perfil_barbeiro WHERE barbeiro_id = ?';
+        // Seleciona a foto_perfil (b.foto_perfil) da tabela barbeiros e junta com o perfil_barbeiro
+        const sql = `
+            SELECT pb.*, b.nome AS nome_barbeiro_auth, b.email, b.foto_perfil 
+            FROM perfil_barbeiro pb
+            JOIN barbeiros b ON pb.barbeiro_id = b.id
+            WHERE pb.barbeiro_id = ?
+        `;
         const [results] = await db.query(sql, [barbeiro_id]);
 
         if (results.length > 0) {
             return res.json({ profileExists: true, data: results[0] });
         } else {
-            return res.json({ profileExists: false });
+            // Se o perfil completo não existe, busca a foto e dados básicos de 'barbeiros' para a tela de cadastro
+            const [basicInfo] = await db.query('SELECT nome, email, foto_perfil FROM barbeiros WHERE id = ?', [barbeiro_id]);
+            return res.json({ profileExists: false, data: basicInfo[0] || {} });
         }
 
     } catch (err) {
@@ -260,13 +326,83 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
 
     } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') {
-             return res.status(409).json({ error: 'Este barbeiro já possui um perfil cadastrado.' });
+            return res.status(409).json({ error: 'Este barbeiro já possui um perfil cadastrado.' });
         }
         console.error('Erro ao criar perfil:', err);
         res.status(500).json({ error: 'Erro interno ao salvar perfil.' });
     }
 });
 
+
+// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
+// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
+// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
+// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
+// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
+app.put('/perfil/foto', authenticateToken, (req, res) => {
+    
+    const barbeiro_id = req.user.id; 
+    
+    upload(req, res, async (err) => {
+        
+        if (err || !req.file) { // Se Multer falhar ou o arquivo não vier
+            // ... (log de erros e retorna 500/400) ...
+            return res.status(400).json({ error: "Nenhum arquivo de foto foi recebido ou erro interno no Multer." });
+        }
+
+        let fotoPath = null;
+        const oldPath = req.file.path;
+        const oldFilename = req.file.filename; 
+        
+        // 🚨 CRÍTICO: Definindo o novo nome do arquivo com o ID do barbeiro 🚨
+        const filenameWithId = `foto-${barbeiro_id}-${oldFilename}`;
+        const newPath = path.join(uploadsDir, filenameWithId); 
+        
+        // Tenta renomear o arquivo
+        try {
+            fs.renameSync(oldPath, newPath); // AQUI A RENOVEÇÃO OCORRE
+            fotoPath = `/uploads/${filenameWithId}`; // Caminho RELATIVO para o DB
+
+        } catch (renameErr) {
+            console.error("Falha Crítica ao renomear arquivo (Permissão/Caminho):", renameErr);
+            fs.unlink(oldPath, () => {}); // Tenta apagar o arquivo temporário
+            return res.status(500).json({ error: "Falha ao processar o arquivo no servidor." });
+        }
+
+        // Lógica de deleção da foto antiga (Mantida, pois é correta)
+        try {
+            const [oldPhotoRow] = await db.query('SELECT foto_perfil FROM barbeiros WHERE id = ?', [barbeiro_id]);
+            const oldPhotoPath = oldPhotoRow?.[0]?.foto_perfil;
+            if (oldPhotoPath && oldPhotoPath !== fotoPath) {
+                const fullPath = path.join(__dirname, oldPhotoPath);
+                if (fs.existsSync(fullPath)) { 
+                    fs.unlinkSync(fullPath); 
+                }
+            }
+        } catch (cleanupError) {
+             console.warn("Aviso: Falha ao deletar foto antiga:", cleanupError.message);
+        }
+        
+        try {
+            // 2. Query para atualizar a coluna foto_perfil no DB
+            const sql = 'UPDATE barbeiros SET foto_perfil = ? WHERE id = ?';
+            await db.query(sql, [fotoPath, barbeiro_id]);
+
+            return res.status(200).json({ 
+                message: "Foto de perfil atualizada com sucesso!",
+                foto_perfil_url: fotoPath 
+            });
+
+        } catch (error) {
+            // Se falhar no DB, tenta deletar o arquivo renomeado para limpeza
+            if (newPath && fs.existsSync(newPath)) {
+                fs.unlink(newPath, (errUnlink) => { }); 
+            }
+            console.error("Erro ao atualizar DB com a foto:", error);
+            return res.status(500).json({ error: "Erro interno ao atualizar perfil." });
+        }
+    });
+});
 // ==========================================================
 // ROTAS DE MOVIMENTAÇÕES FINANCEIRAS (CONTROLE DE CAIXA)
 // ==========================================================
@@ -326,23 +462,23 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 
 // Rota de LISTAGEM DO DIA (GET /movimentacoes)
 app.get('/movimentacoes', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
-    // O código do frontend (Transacoes.jsx) irá aplicar filtros de data, tipo e pagamento.
-    // O backend deve apenas garantir a segurança (filtrando por barbeiro_id).
+    const barbeiro_id = req.user.id;
+    // O código do frontend (Transacoes.jsx) irá aplicar filtros de data, tipo e pagamento.
+    // O backend deve apenas garantir a segurança (filtrando por barbeiro_id).
 
-    try {
-        // SQL CORRIGIDO: Remove o filtro de data padrão para listar TUDO
-        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? ORDER BY data_hora DESC'; 
-        
-        // Apenas o ID do barbeiro é passado
-        const [rows] = await db.query(sql, [barbeiro_id]); 
+    try {
+        // SQL CORRIGIDO: Remove o filtro de data padrão para listar TUDO
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? ORDER BY data_hora DESC'; 
+        
+        // Apenas o ID do barbeiro é passado
+        const [rows] = await db.query(sql, [barbeiro_id]); 
 
-        return res.json(rows); 
-        
-    } catch (error) {
-        console.error("Erro ao listar movimentações:", error);
-        return res.status(500).json({ error: "Erro interno ao listar." });
-    }
+        return res.json(rows); 
+        
+    } catch (error) {
+        console.error("Erro ao listar movimentações:", error);
+        return res.status(500).json({ error: "Erro interno ao listar." });
+    }
 });
 app.get('/movimentacoes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
@@ -423,24 +559,24 @@ app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
 });
 
 app.get('/saldo', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
-    const startOfDay = getStartOfDay();
+    const barbeiro_id = req.user.id;
+    const startOfDay = getStartOfDay();
 
-    try {
-        // SQL em linha e limpo
-        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
-        
-        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
-        const resultado = rows[0]; // Certifique-se de que é a linha de dados
+    try {
+        // SQL em linha e limpo
+        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
+        
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
+        const resultado = rows[0]; // Certifique-se de que é a linha de dados
 
-        return res.json({
-            saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
-        });
+        return res.json({
+            saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
+        });
 
-    } catch (error) {
-        console.error("Erro ao calcular saldo:", error);
-        return res.status(500).json({ error: "Erro interno." });
-    }
+    } catch (error) {
+        console.error("Erro ao calcular saldo:", error);
+        return res.status(500).json({ error: "Erro interno." });
+    }
 });
 
 
