@@ -48,14 +48,16 @@ db.getConnection()
 
 
 // Nota: A função getTaxaCartao deve ser atualizada para usar 'db.query' já que agora é um Pool de Promessas.
-async function getTaxaCartao() {
-    try {
-        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE id = 1');
-        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
-    } catch (e) {
-        console.error("Erro ao buscar taxa de cartão:", e);
-        return 0.00;
-    }
+async function getTaxaCartao(barbeiroId) {
+// 🚨 CORRIGIDO: Agora aceita o parâmetro barbeiroId
+    try {
+        // A consulta usa o ID do barbeiro logado (multi-tenant)
+        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?', [barbeiroId]);
+        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
+    } catch (e) {
+        console.error("Erro ao buscar taxa de cartão no cálculo:", e);
+        return 0.00;
+    }
 }
 
 // Função para formatar a data para SQL (YYYY-MM-DD)
@@ -284,7 +286,7 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 
         // 1. APLICAÇÃO DA TAXA DO CARTÃO (Se for Receita com Cartão)
         if (forma_pagamento === 'cartao' && tipo === 'receita') {
-            const taxaPercentual = await getTaxaCartao();
+            const taxaPercentual = await getTaxaCartao(barbeiro_id);
             if (taxaPercentual > 0) {
                 const taxaValor = valor * (taxaPercentual / 100);
                 valorFinal = valor - taxaValor;
@@ -327,17 +329,20 @@ app.get('/movimentacoes', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
     const startOfDay = getStartOfDay(); // <--- Pega a meia-noite de hoje
 
-   try {
-        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? ORDER BY data_hora DESC';
-        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
+    try {
+        // SQL limpo e correto (data_hora >= ?)
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? ORDER BY data_hora DESC';
+        
+        // 🚨 CORREÇÃO 1: Desestrutura as linhas de resultado
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
 
-        // 🚨 CORREÇÃO: Retorna o array de resultados (rows)
-        return res.json(rows); 
-        
-    } catch (error) {
-        console.error("Erro ao listar movimentações:", error);
-        return res.status(500).json({ error: "Erro interno ao listar." });
-    }
+        // 🚨 CORREÇÃO 2: Retorna o array de resultados (rows)
+        return res.json(rows); 
+        
+    } catch (error) {
+        console.error("Erro ao listar movimentações:", error);
+        return res.status(500).json({ error: "Erro interno ao listar." });
+    }
 });
 app.get('/movimentacoes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
@@ -418,24 +423,24 @@ app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
 });
 
 app.get('/saldo', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
-    const startOfDay = getStartOfDay();
+    const barbeiro_id = req.user.id;
+    const startOfDay = getStartOfDay();
 
-    try {
-        // SQL em linha e limpo (Corrigido o problema de sintaxe)
-        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
-        
-        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
-    const resultado = rows[0];
+    try {
+        // SQL em linha e limpo
+        const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
+        
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
+        const resultado = rows[0]; // Certifique-se de que é a linha de dados
 
-        return res.json({
-        saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
-    })
+        return res.json({
+            saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
+        });
 
-    } catch (error) {
-        console.error("Erro ao calcular saldo:", error);
-        return res.status(500).json({ error: "Erro interno." });
-    }
+    } catch (error) {
+        console.error("Erro ao calcular saldo:", error);
+        return res.status(500).json({ error: "Erro interno." });
+    }
 });
 
 
@@ -461,9 +466,155 @@ app.get('/totais/diarios', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/relatorio/mensal/:ano/:mes', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Mensal não implementado." }); });
-app.get('/relatorio/diario/:data', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Diário não implementado." }); });
-app.get('/relatorio/anual/:ano', authenticateToken, (req, res) => { res.status(501).json({ error: "Relatório Anual não implementado." }); });
+
+// --- Rota 1: GET /taxa-cartao (Busca a taxa do barbeiro logado) ---
+app.get('/taxa-cartao', authenticateToken, async (req, res) => {
+    // 1. Usa o ID do barbeiro logado
+    const barbeiro_id = req.user.id; 
+
+    try {
+        const sql = 'SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?';
+        const [rows] = await db.query(sql, [barbeiro_id]);
+
+        // 2. Retorna a taxa ou 0.00 se o registro ainda não existir
+        const taxa = rows && rows[0] ? parseFloat(rows[0].taxa) : 0.00;
+        
+        return res.json({ taxa: taxa }); 
+
+    } catch (error) {
+        console.error("Erro ao buscar taxa de cartão:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar taxa." });
+    }
+});
+
+// --- Rota 2: PUT /taxa-cartao (Salva/Atualiza a taxa do barbeiro logado) ---
+app.put('/taxa-cartao', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { taxa } = req.body; 
+
+    const taxaNumerica = parseFloat(taxa);
+    if (isNaN(taxaNumerica) || taxaNumerica < 0) {
+        return res.status(400).json({ error: "Taxa inválida. Use um número positivo." });
+    }
+
+    try {
+        // Usa INSERT INTO ... ON DUPLICATE KEY UPDATE para garantir que insere OU atualiza
+        const sql = `
+            INSERT INTO taxa_cartao (barbeiro_id, taxa) VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE taxa = VALUES(taxa)
+        `;
+        await db.query(sql, [barbeiro_id, taxaNumerica]);
+
+        return res.status(200).json({ message: "Taxa de cartão atualizada com sucesso!" });
+        
+    } catch (error) {
+        console.error("Erro ao atualizar taxa de cartão:", error);
+        return res.status(500).json({ error: "Erro interno ao atualizar taxa." });
+    }
+});
+
+// Função auxiliar para buscar a taxa individual do barbeiro
+async function getTaxaCartao(barbeiroId) { 
+    try {
+        // Busca a taxa usando o ID do barbeiro
+        const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?', [barbeiroId]);
+        // Retorna a taxa como float, ou 0.00 se não houver registro
+        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00); 
+    } catch (e) {
+        console.error("Erro ao buscar taxa de cartão no cálculo:", e);
+        return 0.00;
+    }
+}
+// server.js (Rota para Relatório Mensal - Cerca da Linha 480)
+// server.js (Rota para Relatório Mensal)
+app.get('/relatorio/mensal/:ano/:mes', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { ano, mes } = req.params;
+
+    // Constrói o início do mês atual (Ex: '2025-05-01 00:00:00')
+    const startOfMonth = `${ano}-${mes.padStart(2, '0')}-01 00:00:00`;
+    
+    // Constrói o início do próximo mês para usar como data final do filtro
+    const dataProximoMes = new Date(parseInt(ano), parseInt(mes), 1);
+    const endOfMonth = dataProximoMes.toISOString().slice(0, 19).replace('T', ' ');
+
+    try {
+        const sql = `SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total, SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? AND data_hora < ?`;
+        const [rows] = await db.query(sql, [barbeiro_id, startOfMonth, endOfMonth]);
+        const resultado = rows[0];
+
+        return res.json({
+            receita_total: parseFloat(resultado.receita_total || 0).toFixed(2),
+            despesa_total: parseFloat(resultado.despesa_total || 0).toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erro ao calcular relatório mensal:", error);
+        return res.status(500).json({ error: "Erro interno ao gerar relatório mensal." });
+    }
+});
+
+// Rota para Relatório Diário
+// server.js (Rota para Relatório Diário - Cerca da Linha 515)
+// server.js (Rota para Relatório Diário)
+app.get('/relatorio/diario/:data', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { data: dateString } = req.params; // data virá como 'YYYY-MM-DD'
+
+    // Filtro por intervalo: dataString 00:00:00 (início do dia)
+    const startOfDay = `${dateString} 00:00:00`;
+    
+    // Função auxiliar para obter a meia-noite do dia seguinte
+    const getEndOfDay = (dateStr) => {
+        const date = new Date(dateStr + 'T00:00:00'); // Garante que a data base é limpa
+        date.setDate(date.getDate() + 1);
+        return date.toISOString().slice(0, 19).replace('T', ' '); 
+    };
+    const endOfDay = getEndOfDay(dateString); 
+    
+    try {
+        const sql = `SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total, SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? AND data_hora < ?`;
+        
+        // Passamos startOfDay E endOfDay para definir o intervalo exato
+        const [rows] = await db.query(sql, [barbeiro_id, startOfDay, endOfDay]); 
+        const resultado = rows[0];
+
+        return res.json({
+            receita_total: parseFloat(resultado.receita_total || 0).toFixed(2),
+            despesa_total: parseFloat(resultado.despesa_total || 0).toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erro ao calcular relatório diário:", error);
+        return res.status(500).json({ error: "Erro interno ao gerar relatório diário." });
+    }
+});
+
+
+// Rota para Relatório Anual
+// server.js (Rota para Relatório Anual)
+app.get('/relatorio/anual/:ano', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { ano } = req.params;
+
+    const startOfYear = `${ano}-01-01 00:00:00`;
+    const endOfNextYear = `${parseInt(ano) + 1}-01-01 00:00:00`;
+
+    try {
+        const sql = `SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total, SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? AND data_hora < ?`;
+        const [rows] = await db.query(sql, [barbeiro_id, startOfYear, endOfNextYear]);
+        const resultado = rows[0];
+
+        return res.json({
+            receita_total: parseFloat(resultado.receita_total || 0).toFixed(2),
+            despesa_total: parseFloat(resultado.despesa_total || 0).toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erro ao calcular relatório anual:", error);
+        return res.status(500).json({ error: "Erro interno ao gerar relatório anual." });
+    }
+});
 
 // ==========================================================
 // ROTAS DE CLIENTES E AGENDAMENTO (stubs)

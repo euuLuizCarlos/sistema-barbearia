@@ -235,7 +235,14 @@ const Transacoes = () => {
                         <button 
                             type="button"
                             onClick={fetchMovimentacoes} 
-                            style={{ padding: '8px 15px', cursor: 'pointer', border: '1px solid #023047', color: '#023047', backgroundColor: '#FFB703', fontWeight: 'bold' }}
+                            style={{ 
+                                padding: '8px 15px', 
+                                cursor: 'pointer', 
+                                border: '1px solid #023047', 
+                                color: '#023047', 
+                                backgroundColor: '#FFB703', 
+                                fontWeight: 'bold' 
+                            }}
                             title="Forçar atualização dos dados"
                         >
                             Atualizar Dados
