@@ -616,6 +616,33 @@ app.get('/relatorio/anual/:ano', authenticateToken, async (req, res) => {
     }
 });
 
+
+
+// Rota para EXCLUSÃO DA CONTA (Deleta o registro do barbeiro logado)
+app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const userEmail = req.user.email;
+    
+    // ATENÇÃO: Esta operação DELETA TODOS os dados do barbeiro.
+    try {
+        const sql = 'DELETE FROM barbeiros WHERE id = ?';
+        const [result] = await db.query(sql, [barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Conta não encontrada ou já excluída." });
+        }
+        
+        console.log(`Conta do Barbeiro ${userEmail} (ID: ${barbeiro_id}) excluída com sucesso.`);
+        
+        return res.status(200).json({ message: "Conta excluída permanentemente. Redirecionando..." });
+
+    } catch (err) {
+        // Se este erro ocorrer, é porque o ON DELETE CASCADE falhou.
+        console.error('Erro na exclusão de conta (Provável falha de FOREIGN KEY):', err);
+        return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
+    }
+});
+
 // ==========================================================
 // ROTAS DE CLIENTES E AGENDAMENTO (stubs)
 // ==========================================================
