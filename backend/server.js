@@ -327,16 +327,16 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 // Rota de LISTAGEM DO DIA (GET /movimentacoes)
 app.get('/movimentacoes', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    const startOfDay = getStartOfDay(); // <--- Pega a meia-noite de hoje
+    // O código do frontend (Transacoes.jsx) irá aplicar filtros de data, tipo e pagamento.
+    // O backend deve apenas garantir a segurança (filtrando por barbeiro_id).
 
     try {
-        // SQL limpo e correto (data_hora >= ?)
-        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ? ORDER BY data_hora DESC';
+        // SQL CORRIGIDO: Remove o filtro de data padrão para listar TUDO
+        const sql = 'SELECT * FROM movimentacoes_financeiras WHERE barbeiro_id = ? ORDER BY data_hora DESC'; 
         
-        // 🚨 CORREÇÃO 1: Desestrutura as linhas de resultado
-        const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
+        // Apenas o ID do barbeiro é passado
+        const [rows] = await db.query(sql, [barbeiro_id]); 
 
-        // 🚨 CORREÇÃO 2: Retorna o array de resultados (rows)
         return res.json(rows); 
         
     } catch (error) {

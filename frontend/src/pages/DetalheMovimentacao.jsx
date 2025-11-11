@@ -63,7 +63,7 @@ const DetalheMovimentacao = () => {
                 
                 <p><strong>Tipo:</strong> {movimentacao.tipo === 'receita' ? 'Receita (Entrada)' : 'Despesa (Saída)'}</p>
                 <p><strong>Categoria:</strong> {movimentacao.categoria}</p>
-                <p><strong>Forma de Pagamento:</strong> {movimentacao.forma_pagamento}</p>
+                <p><strong>Forma de Pagamento:</strong> {movimentacao.forma_pagamentoo}</p>
                 <p><strong>Barbeiro ID:</strong> {movimentacao.barbeiro_id}</p>
                 
                 <p><strong>Data do Registro:</strong> {dataFormatada}</p>
