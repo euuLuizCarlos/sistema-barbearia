@@ -157,44 +157,89 @@ app.post('/auth/register', async (req, res) => {
     }
 });
 
+// Rota dedicada para Cadastro de Cliente
+app.post('/auth/register/cliente', async (req, res) => {
+    const { nome, email, password, telefone } = req.body; // Campos da tabela 'clientes'
+    
+    if (!nome || !email || !password) {
+        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
+    }
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Insere na tabela 'clientes' (Sem a coluna status_ativacao ou tipo_usuario)
+        const sql = 'INSERT INTO clientes (nome, email, password_hash, telefone) VALUES (?, ?, ?, ?)';
+        
+        const [result] = await db.query(sql, [nome, email, hashedPassword, telefone || null]);
+        
+        // Sucesso: Cliente não precisa de ativação.
+        res.status(201).json({ message: 'Cliente registrado com sucesso!', userId: result.insertId });
+
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'Email já está em uso.' });
+        }
+        console.error('Erro no registro do cliente:', err);
+        res.status(500).json({ error: 'Erro interno no servidor.' });
+    }
+});
+
 // Rota para Login de Usuário (CHECA O STATUS DE ATIVAÇÃO)
+// Rota para Login de Usuário (CHECA Cliente OU Barbeiro)
 app.post('/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        const sql = 'SELECT id, nome, email, password_hash, tipo_usuario, status_ativacao FROM barbeiros WHERE email = ?';
-        const [results] = await db.query(sql, [email]);
+        // --- 1. TENTA BUSCAR NA TABELA 'BARBEIROS' ---
+        // Barbeiros têm status de ativação e tipo_usuario (barbeiro, admin)
+        let sql = 'SELECT id, nome, email, password_hash, tipo_usuario, status_ativacao FROM barbeiros WHERE email = ?';
+        let [results] = await db.query(sql, [email]);
+        let user = results[0];
+        let userType = user?.tipo_usuario;
+        let isBarbeiro = true; // Flag para rastrear a origem do usuário
         
-        const user = results[0];
+        // --- 2. SE NÃO ENCONTROU, TENTA BUSCAR NA TABELA 'CLIENTES' ---
+        if (!user) {
+            // Clientes NÃO têm status_ativacao ou tipo_usuario no DB, definimos fixo aqui
+            sql = 'SELECT id, nome, email, password_hash FROM clientes WHERE email = ?';
+            [results] = await db.query(sql, [email]);
+            user = results[0];
+            userType = 'cliente'; // Define o tipo manualmente
+            isBarbeiro = false; // Não é Barbeiro
+        }
 
+        // --- 3. VALIDAÇÃO DE EXISTÊNCIA E SENHA ---
         if (!user || !user.password_hash) { 
             return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
 
-        // 1. BLOQUEIO CRÍTICO: Se o status for PENDENTE
-        if (user.status_ativacao === 'pendente' || user.status_ativacao === null) {
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Email ou senha inválidos.' });
+        }
+        
+        // --- 4. LÓGICA DE ATIVAÇÃO (APENAS PARA BARBEIROS) ---
+        // Se for Barbeiro e o status for 'pendente', bloqueia o login
+        if (isBarbeiro && user.status_ativacao === 'pendente') {
             return res.status(403).json({ 
                 error: 'Ativação pendente. Por favor, insira sua chave de licença.',
                 userId: user.id 
             });
         }
         
-        // 2. Compara a Senha
-        const isMatch = await bcrypt.compare(password, user.password_hash);
-        
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Email ou senha inválidos.' });
-        }
+        // Se for Cliente, este bloco é ignorado, e o login segue normalmente.
 
-        // 3. Sucesso: Gera o Token
-        const token = jwt.sign({ id: user.id, email: user.email, tipo: user.tipo_usuario }, SECRET_KEY, { expiresIn: '1h' });
+        // --- 5. SUCESSO: GERA O TOKEN ---
+        const token = jwt.sign({ id: user.id, email: user.email, tipo: userType }, SECRET_KEY, { expiresIn: '1h' });
         
         res.json({ 
             message: 'Login bem-sucedido!', 
             token, 
             userId: user.id, 
             userName: user.nome,
-            userType: user.tipo_usuario
+            userType: userType // Retorna 'cliente', 'barbeiro' ou 'admin'
         });
 
     } catch (err) {
@@ -263,11 +308,13 @@ app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
 // ==========================================================
 
 // Rota para Checar/Buscar o Perfil (GET) - Inclui o campo foto_perfil
+// Rota para Checar/Buscar o Perfil (GET) - Requer autenticação
 app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
+    // Requer o ID do usuário LOGADO
     const barbeiro_id = req.user.id; 
     
     try {
-        // Seleciona a foto_perfil (b.foto_perfil) da tabela barbeiros e junta com o perfil_barbeiro
+        // Seleciona o perfil completo e junta com a foto/email da tabela base
         const sql = `
             SELECT pb.*, b.nome AS nome_barbeiro_auth, b.email, b.foto_perfil 
             FROM perfil_barbeiro pb
@@ -277,16 +324,20 @@ app.get('/perfil/barbeiro', authenticateToken, async (req, res) => {
         const [results] = await db.query(sql, [barbeiro_id]);
 
         if (results.length > 0) {
+            // Perfil COMPLETO existe: Modo EDIÇÃO
             return res.json({ profileExists: true, data: results[0] });
         } else {
-            // Se o perfil completo não existe, busca a foto e dados básicos de 'barbeiros' para a tela de cadastro
+            // Perfil COMPLETO não existe: Busca dados básicos para Cadastro Inicial
             const [basicInfo] = await db.query('SELECT nome, email, foto_perfil FROM barbeiros WHERE id = ?', [barbeiro_id]);
+            
+            // É CRUCIAL retornar o nome do barbeiro, mesmo que o perfil completo não exista
             return res.json({ profileExists: false, data: basicInfo[0] || {} });
         }
 
     } catch (err) {
         console.error('Erro ao checar perfil:', err);
-        res.status(500).json({ error: 'Erro interno ao checar perfil.' });
+        // Se der erro no DB, retornamos os dados básicos de qualquer forma para não travar o frontend
+        return res.status(200).json({ profileExists: false, data: { nome_barbeiro: req.user.nome, email: req.user.email } });
     }
 });
 
@@ -902,6 +953,30 @@ app.get('/servicos', authenticateToken, async (req, res) => {
     }
 });
 
+// Rota: GET /servicos/:servicoId
+// Funcionalidade: Busca os detalhes de um serviço específico
+app.get('/servicos/:servicoId', async (req, res) => {
+    const { servicoId } = req.params;
+
+    try {
+        // Seleciona as colunas essenciais da tabela 'servicos'
+        const sql = 'SELECT id, nome, preco, duracao_minutos FROM servicos WHERE id = ?';
+        // Assumindo que 'db' é o seu pool de conexão MySQL
+        const [servico] = await db.query(sql, [servicoId]);
+        
+        if (servico.length === 0) {
+            return res.status(404).json({ error: "Serviço não encontrado." });
+        }
+        
+        // Retorna apenas o primeiro (e único) resultado
+        return res.json(servico[0]);
+        
+    } catch (error) {
+        console.error("Erro ao buscar serviço por ID:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar serviço." });
+    }
+});
+
 
 // ==========================================================
 // ROTAS CRUD DE HORÁRIOS DE ATENDIMENTO
@@ -1120,6 +1195,81 @@ app.put('/agendamentos/:id', authenticateToken, async (req, res) => {
 
 // Rota: DELETE /agendamentos/:id (Placeholder)
 app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Rota DELETE Agendamento não implementada. Use PUT para status 'cancelado'." }); });
+
+
+
+// Rota: GET /barbearias/busca?query=TERRA
+// Funcionalidade: Busca barbearias ativas por nome, barbearia ou localidade
+app.get('/barbearias/busca', async (req, res) => {
+    // O parâmetro 'query' é opcional para filtrar por nome/local
+    const { query } = req.query; 
+
+    try {
+        let sql = `
+            SELECT 
+                b.id AS barbeiro_id, 
+                pb.nome_barbearia,
+                pb.rua,
+                pb.numero,
+                pb.bairro,
+                pb.localidade,
+                pb.uf,
+                b.foto_perfil,
+                b.nome AS nome_barbeiro
+            FROM barbeiros b
+            JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
+            WHERE b.status_ativacao = 'ativa' 
+            AND b.tipo_usuario IN ('barbeiro', 'admin') 
+        `;
+        const params = [];
+        
+        // Adiciona a cláusula de busca se a query estiver presente
+        if (query) {
+            const searchQuery = `%${query}%`;
+            sql += ` AND (pb.nome_barbearia LIKE ? OR b.nome LIKE ? OR pb.localidade LIKE ?)`;
+            params.push(searchQuery, searchQuery, searchQuery);
+        }
+        
+        sql += ` ORDER BY pb.nome_barbearia ASC`;
+
+        // Assumindo que 'db' é o seu pool de conexão MySQL
+        const [barbearias] = await db.query(sql, params);
+
+        // Processa os dados para adicionar a URL completa da foto
+        const barbeariasFormatadas = barbearias.map(barbearia => ({
+            ...barbearia,
+            // Construção da URL da foto, assumindo que o Node.js serve arquivos estáticos
+            foto_url: barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null
+        }));
+
+        return res.json(barbeariasFormatadas);
+
+    } catch (error) {
+        console.error("Erro ao buscar barbearias:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar barbearias." });
+    }
+});
+
+
+// Rota: GET /servicos/barbeiro/:barbeiroId
+// Funcionalidade: Lista todos os serviços ATIVOS de um barbeiro específico
+app.get('/servicos/barbeiro/:barbeiroId', async (req, res) => {
+    // O ID do barbeiro vem da URL que o frontend chamou
+    const { barbeiroId } = req.params;
+
+    try {
+        // Seleciona as colunas essenciais da tabela 'servicos'
+        const sql = 'SELECT id, nome, preco, duracao_minutos, barbeiro_id FROM servicos WHERE barbeiro_id = ? ORDER BY nome';
+        // Assumindo que 'db' é o seu pool de conexão MySQL
+        const [servicos] = await db.query(sql, [barbeiroId]);
+        
+        return res.json(servicos);
+        
+    } catch (error) {
+        console.error("Erro ao listar serviços de barbeiro:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar serviços do profissional." });
+    }
+});
 
 
 const PORT = 3000;

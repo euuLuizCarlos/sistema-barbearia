@@ -76,25 +76,36 @@ const Register = () => {
 
     // --- FUNÇÃO 1: CRIA O USUÁRIO (ETAPA 1) ---
     const handleInitialRegister = async (e) => {
-        e.preventDefault();
-        setMessage('Cadastrando usuário...');
-        
-        try {
-            const response = await api.post('/auth/register', formData);
-            const userId = response.data.userId;
+    e.preventDefault();
+    setMessage('Cadastrando usuário...');
+    
+    try {
+        let response;
+        
+        // 1. LÓGICA CHAVE: Cliente usa ROTA DEDICADA; Barbeiro usa ROTA ANTIGA.
+        if (userType === 'cliente') {
+            // Cliente usa a nova rota (sem campos de ativação)
+            const dadosCliente = { nome: formData.nome, email: formData.email, password: formData.password, telefone: formData.telefone }; // Adicione 'telefone' se for usá-lo
+            response = await api.post('/auth/register/cliente', dadosCliente); // <--- ROTA CORRETA
+        } else {
+            // Barbeiro/Admin usa a rota antiga (que espera ativação)
+            response = await api.post('/auth/register', formData);
+        }
+        
+        const userId = response.data.userId;
 
-            if (userType === 'cliente') {
-                setMessage('Cadastro de Cliente concluído! Faça login.');
-                setTimeout(() => navigate('/login'), 2000);
-            } else {
-                const userId = response.data.userId;
-                setTempUserId(userId); 
-                setRegistrationStep(2); // Vai para a Etapa 2 (Chave)
-                navigate(`/ativacao?userId=${userId}`);
-                setMessage('Conta criada. Insira a chave de licença.');
-            }
+        // 2. REDIRECIONAMENTO FINAL
+        if (userType === 'cliente') {
+            setMessage('Cadastro de Cliente concluído! Redirecionando para o Login...');
+            setTimeout(() => navigate('/login'), 2000);
+        } else {
+            // Fluxo de Barbeiro: Vai para a ativação
+            setTempUserId(userId); 
+            navigate(`/ativacao?userId=${userId}`);
+            setMessage('Conta criada. Insira a chave de licença.');
+        }
 
-        } catch (error) {
+    } catch (error) {
             const errorMessage = error.response?.data?.error || 'Erro no cadastro. Verifique a conexão.';
             setMessage(errorMessage);
         }

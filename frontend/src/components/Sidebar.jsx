@@ -1,28 +1,55 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-// Importado FaClock para Horários
-import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt, FaClipboardList, FaClock } from 'react-icons/fa';
+// Importa todos os ícones necessários
+import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt, FaClipboardList, FaClock, FaAlignJustify, FaSearch } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
-    const { logout } = useAuth();
+    const { logout, user } = useAuth();
     const location = useLocation();
+    
+    const isClient = user?.userType === 'cliente';
+    const userProfilePath = '/meu-perfil'; 
 
-    // Lista de itens do menu.
-    const menuItems = [
-        { path: '/', name: 'Principal', icon: FaHome, isBottom: false },
-        { path: '/transacoes', name: 'Transações', icon: FaDollarSign, isBottom: false },
-        
-        // --- ITENS DE GERENCIAMENTO ---
-        { path: '/servicos', name: 'Meus Serviços', icon: FaClipboardList, isBottom: false },
-        { path: '/horarios', name: 'Meus Horários', icon: FaClock, isBottom: false }, // <--- NOVO ITEM ADICIONADO
-        
-        { path: '/relatorio', name: 'Relatórios', icon: FaChartLine, isBottom: false },
-        { path: '/agenda', name: 'Agenda', icon: FaCalendarAlt, isBottom: false },
-        { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
-        { path: '/meu-perfil', name: 'Meu Perfil', icon: FaUserAlt, isBottom: true }, 
+    // --- DEFINIÇÕES DOS ITENS DE NAVEGAÇÃO ---
+    // 1. O item 'Início' é a base para todos (Cliente e Barbeiro)
+    const baseItems = [
+        { path: '/', name: 'Início', icon: FaHome, isBottom: false }, // CHAVE ÚNICA AQUI
     ];
 
+    // 2. Itens Exclusivos de Gestão (Barbeiro/Admin)
+    const barberItems = [
+        { path: '/transacoes', name: 'Transações', icon: FaDollarSign, isBottom: false },
+        { path: '/servicos', name: 'Meus Serviços', icon: FaClipboardList, isBottom: false },
+        { path: '/horarios', name: 'Meus Horários', icon: FaClock, isBottom: false },
+        { path: '/relatorio', name: 'Relatórios', icon: FaChartLine, isBottom: false },
+        { path: '/agenda', name: 'Agenda (Barbeiro)', icon: FaCalendarAlt, isBottom: false },
+    ];
+    
+    // 3. Itens Exclusivos/Específicos do Cliente
+    const clientItems = [
+        // A rota '/' já é a busca no DashboardCliente, então não a repetimos
+        { path: '/meus-agendamentos', name: 'Meus Agendamentos', icon: FaCalendarAlt, isBottom: false },
+        { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
+        // Usamos o Perfil como o 'Menu' geral para o Cliente
+        { path: userProfilePath, name: 'Menu / Perfil', icon: FaAlignJustify, isBottom: false }, 
+    ];
+    
+    // 4. Monta a lista final e o item de rodapé
+    let menuItems = [...baseItems];
+    let bottomLink = null;
+
+    if (isClient) {
+        menuItems = [...menuItems, ...clientItems];
+    } else {
+        menuItems = [...menuItems, ...barberItems];
+        // Barbeiro tem o link de Perfil separado no rodapé da Sidebar
+        bottomLink = { path: userProfilePath, name: 'Meu Perfil', icon: FaUserAlt };
+    }
+    
+    const topLinks = menuItems; // Todos os links são considerados "top" agora
+    
+    // --- ESTILOS (Mantidos) ---
     const style = {
         sidebar: {
             position: 'fixed',
@@ -30,9 +57,9 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             left: 0,
             width: '250px',
             height: '100%',
-            backgroundColor: '#023047', // Cor primária do Dark Mode
+            backgroundColor: '#023047', 
             color: '#fff',
-            paddingTop: '60px', // Espaço para o Header
+            paddingTop: '60px', 
             transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.3s ease-in-out',
             zIndex: 20,
@@ -51,13 +78,13 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             transition: 'background-color 0.2s',
         },
         linkActive: {
-            backgroundColor: '#FFB703', // Cor de destaque
+            backgroundColor: '#FFB703', 
             color: '#023047',
             fontWeight: 'bold',
         },
         bottomSection: {
             padding: '20px 0',
-            borderTop: '1px solid #333',
+            borderTop: bottomLink ? '1px solid #333' : 'none', 
         },
         logoutButton: {
             display: 'flex',
@@ -75,22 +102,19 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         },
     };
 
-    // Filtra os links superiores e inferiores
-    const topLinks = menuItems.filter(item => !item.isBottom);
-    const bottomLinks = menuItems.filter(item => item.isBottom);
-
     return (
         <div style={style.sidebar}>
             {/* Seção Superior do Menu */}
             <div>
                 {topLinks.map((item) => (
                     <Link
-                        key={item.path}
+                        key={item.path} // Agora a chave é única: '/' só aparece uma vez
                         to={item.path}
                         onClick={toggleSidebar}
                         style={{
                             ...style.link,
-                            ...(location.pathname === item.path ? style.linkActive : {}),
+                            ...(location.pathname.startsWith(item.path) && item.path !== '/' && location.pathname !== userProfilePath ? style.linkActive : {}),
+                            ...(location.pathname === item.path && (item.path === '/' || item.path === userProfilePath) ? style.linkActive : {}),
                         }}
                     >
                         <item.icon size={20} style={{ marginRight: '10px' }} />
@@ -99,23 +123,19 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                 ))}
             </div>
 
-            {/* Seção Inferior do Menu */}
+            {/* Seção Inferior do Menu (Para o link de Perfil do Barbeiro e o botão Sair) */}
             <div style={style.bottomSection}>
-                {/* Meu Perfil (abaixo das outras rotas) */}
-                {bottomLinks.map((item) => (
+                {bottomLink && (
                     <Link
-                        key={item.path}
-                        to={item.path}
+                        key={bottomLink.path}
+                        to={bottomLink.path}
                         onClick={toggleSidebar}
-                        style={{
-                            ...style.link,
-                            ...(location.pathname === item.path ? style.linkActive : {}),
-                        }}
+                        style={{ ...style.link, ...(location.pathname === bottomLink.path ? style.linkActive : {}) }}
                     >
-                        <item.icon size={20} style={{ marginRight: '10px' }} />
-                        {item.name}
+                        <bottomLink.icon size={20} style={{ marginRight: '10px' }} />
+                        {bottomLink.name}
                     </Link>
-                ))}
+                )}
                 
                 {/* Botão Sair (O Último elemento) */}
                 <button

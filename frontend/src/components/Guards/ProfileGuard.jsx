@@ -1,42 +1,72 @@
-// src/components/Guards/ProfileGuard.jsx (CÓDIGO SIMPLIFICADO PARA ESTABILIDADE)
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { Navigate, Outlet } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../contexts/AuthContext'; // <--- CAMINHO CORRIGIDO DEFINITIVAMENTE
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 
 const ProfileGuard = () => {
-    const { isAuthenticated, userType } = useAuth();
+    const { isAuthenticated, user } = useAuth();
+    const location = useLocation();
+    const [profileExists, setProfileExists] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Simplificação: Apenas espera a autenticação e o tipo de usuário
-    useEffect(() => {
-        if (!isAuthenticated) {
-            setLoading(true); // Continua loading até a autenticação carregar
+    const isBarbeiroOrAdmin = user?.userType === 'barbeiro' || user?.userType === 'admin';
+
+    // Rotas de GESTÃO PESADA que exigem o perfil completo
+    const requiresFullProfile = [
+        '/transacoes', '/servicos', '/horarios', '/relatorio', '/agenda', '/configuracoes'
+    ].some(path => location.pathname.startsWith(path));
+
+
+    // 1. Efeito para buscar o status do perfil
+    const checkProfileStatus = useCallback(async () => {
+        if (!isAuthenticated || !isBarbeiroOrAdmin) {
+            setLoading(false);
             return;
         }
-        // Se a autenticação carregou (isAuthenticated é true ou false), terminamos o loading
-        setLoading(false);
-    }, [isAuthenticated]); 
+
+        try {
+            // Rota GET /perfil/barbeiro
+            const response = await api.get('/perfil/barbeiro');
+            setProfileExists(response.data.profileExists); 
+        } catch (err) {
+            console.error("Erro no ProfileGuard ao buscar perfil:", err);
+            setProfileExists(false); 
+        } finally {
+            setLoading(false);
+        }
+    }, [isAuthenticated, isBarbeiroOrAdmin]);
+
+    useEffect(() => {
+        if (isAuthenticated && isBarbeiroOrAdmin) {
+            checkProfileStatus();
+        } else {
+             setLoading(false);
+        }
+    }, [isAuthenticated, isBarbeiroOrAdmin, checkProfileStatus]); 
+
 
     if (loading) {
-        return <h2 style={{ padding: '50px', color: '#023047' }}>Verificando acesso...</h2>;
+        return <h2 style={{ padding: '50px', color: '#023047' }}>Verificando perfil...</h2>;
     }
     
-    // -------------------------------------------------------------
-    // LÓGICA DE REDIRECIONAMENTO DE FORÇA BRUTA:
-    // -------------------------------------------------------------
-    
-    // Este Guard NÃO fará mais o bloqueio do perfil. Ele apenas garante que
-    // as rotas de cadastro/edição funcionem se o usuário estiver lá.
-    
-    // Se não for Barbeiro ou não estiver logado, o PrivateRoute já o redirecionou.
-    
-    // Se o usuário está na rota /perfil/cadastro ou /perfil/editar, permite
-    if (window.location.pathname.startsWith('/perfil/cadastro') || window.location.pathname.startsWith('/perfil/editar')) {
+    // 2. LÓGICA CRÍTICA DE REDIRECIONAMENTO
+
+    // Se o usuário não for Barbeiro, permite o acesso (Dashboard Cliente)
+    if (!isBarbeiroOrAdmin) {
         return <Outlet />;
     }
 
-    // Para todas as outras rotas (Agenda, Transações, Dashboard), libera o acesso total.
+    // Se for Barbeiro e o perfil for INCOMPLETO
+    if (isBarbeiroOrAdmin && !profileExists) {
+        
+        // Se tentar acessar uma rota de GESTÃO PESADA (Ex: /transacoes)
+        if (requiresFullProfile) {
+            // Força o redirecionamento para o Cadastro Inicial
+            return <Navigate to="/perfil/cadastro" replace />;
+        }
+    }
+    
+    // Permite o acesso se o Barbeiro tiver perfil, ou se for Cliente, ou se estiver em uma rota de visualização
     return <Outlet />;
 };
 
