@@ -1,23 +1,26 @@
-// src/components/Sidebar.jsx
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt } from 'react-icons/fa';
+// 🚨 FaClipboardList importado
+import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt, FaClipboardList } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
     const { logout } = useAuth();
     const location = useLocation();
 
-    // Lista de itens do menu. Usamos 'isBottom: true' para os itens inferiores.
+    // Lista de itens do menu.
     const menuItems = [
         { path: '/', name: 'Principal', icon: FaHome, isBottom: false },
         { path: '/transacoes', name: 'Transações', icon: FaDollarSign, isBottom: false },
+        
+        // 🚨 NOVO ITEM ADICIONADO: MEUS SERVIÇOS 🚨
+        { path: '/servicos', name: 'Meus Serviços', icon: FaClipboardList, isBottom: false },
+
         { path: '/relatorio', name: 'Relatórios', icon: FaChartLine, isBottom: false },
         { path: '/agenda', name: 'Agenda', icon: FaCalendarAlt, isBottom: false },
         { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
-        // NOVO: Meu Perfil (Posicionado para o final do menu)
-        { path: '/meu-perfil', name: 'Meu Perfil', icon: FaUserAlt, isBottom: true }, // <--- DEVE SER ESTA ROTA
-];
+        { path: '/meu-perfil', name: 'Meu Perfil', icon: FaUserAlt, isBottom: true }, 
+    ];
 
     const style = {
         sidebar: {
@@ -35,7 +38,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             boxShadow: '4px 0 10px rgba(0, 0, 0, 0.5)',
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'space-between', // Essencial para colocar itens no topo e no final
+            justifyContent: 'space-between', 
         },
         link: {
             display: 'flex',

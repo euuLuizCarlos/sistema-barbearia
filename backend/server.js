@@ -5,11 +5,11 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
-// 🚨 NOVOS REQUIRES:
+// 🚨 MÓDULOS DE UPLOAD 🚨
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// ------------------
+// -----------------------
 
 dotenv.config();
 
@@ -27,7 +27,8 @@ app.use(bodyParser.json());
 app.use(cors(corsOptions));
 
 // -------------------------------------------------------------
-// 🚨 CONFIGURAÇÃO CRÍTICA DO MULTER (POSIÇÃO CORRETA) 🚨
+// 🚨 CONFIGURAÇÃO DO MULTER (UPLOAD DE FOTOS) 🚨
+// Este bloco deve estar aqui, após a inicialização do 'app'.
 // -------------------------------------------------------------
 
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
@@ -335,52 +336,58 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
 
 
 // ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
-// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
-// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
-// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
-// ROTA PARA ATUALIZAR A FOTO E DADOS DO PERFIL
 app.put('/perfil/foto', authenticateToken, (req, res) => {
     
     const barbeiro_id = req.user.id; 
     
+    // 1. Executa o middleware Multer para processar o arquivo
     upload(req, res, async (err) => {
         
-        if (err || !req.file) { // Se Multer falhar ou o arquivo não vier
-            // ... (log de erros e retorna 500/400) ...
-            return res.status(400).json({ error: "Nenhum arquivo de foto foi recebido ou erro interno no Multer." });
+        // Trata erros do Multer (ex: arquivo muito grande)
+        if (err instanceof multer.MulterError) {
+            console.error("Erro Multer:", err.message);
+            return res.status(500).json({ error: "Erro no upload: " + err.message });
+        } else if (err) {
+            console.error("Erro de Upload Desconhecido:", err);
+            return res.status(500).json({ error: "Erro desconhecido durante o upload." });
         }
 
         let fotoPath = null;
-        const oldPath = req.file.path;
-        const oldFilename = req.file.filename; 
+        let oldPath = req.file ? req.file.path : null; 
+        let newPath = null; 
         
-        // 🚨 CRÍTICO: Definindo o novo nome do arquivo com o ID do barbeiro 🚨
-        const filenameWithId = `foto-${barbeiro_id}-${oldFilename}`;
-        const newPath = path.join(uploadsDir, filenameWithId); 
-        
-        // Tenta renomear o arquivo
-        try {
-            fs.renameSync(oldPath, newPath); // AQUI A RENOVEÇÃO OCORRE
-            fotoPath = `/uploads/${filenameWithId}`; // Caminho RELATIVO para o DB
+        // Verifica se uma nova foto foi enviada (req.file existe)
+        if (req.file) {
+            
+            // 🚨 CORREÇÃO: Renomear o arquivo para incluir o ID do barbeiro
+            const oldFilename = req.file.filename;
+            const filenameWithId = `foto-${barbeiro_id}-${oldFilename}`;
+            newPath = path.join(uploadsDir, filenameWithId); 
+            
+            // Tenta renomear o arquivo
+            try {
+                fs.renameSync(oldPath, newPath);
+                fotoPath = `/uploads/${filenameWithId}`; // Caminho RELATIVO para o DB
 
-        } catch (renameErr) {
-            console.error("Falha Crítica ao renomear arquivo (Permissão/Caminho):", renameErr);
-            fs.unlink(oldPath, () => {}); // Tenta apagar o arquivo temporário
-            return res.status(500).json({ error: "Falha ao processar o arquivo no servidor." });
-        }
-
-        // Lógica de deleção da foto antiga (Mantida, pois é correta)
-        try {
-            const [oldPhotoRow] = await db.query('SELECT foto_perfil FROM barbeiros WHERE id = ?', [barbeiro_id]);
-            const oldPhotoPath = oldPhotoRow?.[0]?.foto_perfil;
-            if (oldPhotoPath && oldPhotoPath !== fotoPath) {
-                const fullPath = path.join(__dirname, oldPhotoPath);
-                if (fs.existsSync(fullPath)) { 
-                    fs.unlinkSync(fullPath); 
-                }
+            } catch (renameErr) {
+                console.error("Falha Crítica ao renomear arquivo:", renameErr);
+                fs.unlink(oldPath, () => {}); // Tenta apagar o arquivo temporário
+                return res.status(500).json({ error: "Falha ao processar o arquivo no servidor." });
             }
-        } catch (cleanupError) {
-             console.warn("Aviso: Falha ao deletar foto antiga:", cleanupError.message);
+
+            // Lógica Opcional: Deletar foto antiga (Mantida)
+            try {
+                const [oldPhotoRow] = await db.query('SELECT foto_perfil FROM barbeiros WHERE id = ?', [barbeiro_id]);
+                const oldPhotoPath = oldPhotoRow?.[0]?.foto_perfil;
+                if (oldPhotoPath && oldPhotoPath !== fotoPath) {
+                    const fullPath = path.join(__dirname, oldPhotoPath);
+                    if (fs.existsSync(fullPath)) { 
+                        fs.unlinkSync(fullPath); 
+                    }
+                }
+            } catch (cleanupError) {
+                 console.warn("Aviso: Falha ao deletar foto antiga:", cleanupError.message);
+            }
         }
         
         try {
@@ -773,25 +780,261 @@ app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
         return res.status(200).json({ message: "Conta excluída permanentemente. Redirecionando..." });
 
     } catch (err) {
-        // Se este erro ocorrer, é porque o ON DELETE CASCADE falhou.
         console.error('Erro na exclusão de conta (Provável falha de FOREIGN KEY):', err);
         return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
     }
 });
 
+
 // ==========================================================
-// ROTAS DE CLIENTES E AGENDAMENTO (stubs)
+// ROTAS DE SERVIÇOS, CLIENTES E AGENDAMENTO (IMPLEMENTADO)
 // ==========================================================
-app.get('/clientes', authenticateToken, (req, res) => { res.status(501).json({ error: "Clientes não implementado." }); });
-app.get('/barbeiros', authenticateToken, (req, res) => { res.status(501).json({ error: "Barbeiros não implementado." }); });
-app.post('/clientes', authenticateToken, (req, res) => { res.status(501).json({ error: "Cadastro de Cliente não implementado." }); });
-app.post('/agendamentos', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento POST não implementado." }); });
-app.get('/agendamentos', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento GET não implementado." }); });
-app.put('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento PUT não implementado." }); });
-app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Agendamento DELETE não implementado." }); });
+
+// --- ROTAS CRUD DE SERVIÇOS DO BARBEIRO (FINAL) ---
+
+// 1. LISTAR TODOS OS SERVIÇOS DO BARBEIRO LOGADO (READ)
+app.get('/servicos/meus', authenticateToken, async (req, res) => {
+    try {
+        const barbeiro_id = req.user.id;
+        // 🚨 O seu frontend GerenciarServicos chama ESTA rota 🚨
+        const [servicos] = await db.query('SELECT id, nome, preco, duracao_minutos FROM servicos WHERE barbeiro_id = ? ORDER BY nome', [barbeiro_id]);
+        return res.json(servicos);
+    } catch (error) {
+        console.error("Erro ao listar serviços:", error);
+        return res.status(500).json({ error: "Erro interno ao listar serviços." });
+    }
+});
+
+// 2. CRIAR NOVO SERVIÇO (CREATE)
+app.post('/servicos', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { nome, preco, duracao_minutos } = req.body;
+    
+    if (!nome || preco === undefined || !duracao_minutos) {
+        return res.status(400).json({ error: "Nome, preço e duração são obrigatórios." });
+    }
+    
+    try {
+        const sql = 'INSERT INTO servicos (barbeiro_id, nome, preco, duracao_minutos) VALUES (?, ?, ?, ?)';
+        const [result] = await db.query(sql, [barbeiro_id, nome, preco, duracao_minutos]);
+        return res.status(201).json({ id: result.insertId, message: "Serviço criado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao criar serviço:", error);
+        return res.status(500).json({ error: "Erro interno ao criar serviço." });
+    }
+});
+
+// 3. ATUALIZAR SERVIÇO EXISTENTE (UPDATE)
+app.put('/servicos/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const servico_id = req.params.id;
+    const { nome, preco, duracao_minutos } = req.body;
+
+    if (!nome || preco === undefined || !duracao_minutos) {
+        return res.status(400).json({ error: "Nome, preço e duração são obrigatórios." });
+    }
+
+    try {
+        const sql = 'UPDATE servicos SET nome = ?, preco = ?, duracao_minutos = ? WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.query(sql, [nome, preco, duracao_minutos, servico_id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Serviço não encontrado ou você não tem permissão para editá-lo." });
+        }
+        return res.json({ message: "Serviço atualizado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao atualizar serviço:", error);
+        return res.status(500).json({ error: "Erro interno ao atualizar serviço." });
+    }
+});
+
+// 4. DELETAR SERVIÇO (DELETE)
+app.delete('/servicos/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const servico_id = req.params.id;
+
+    try {
+        const [result] = await db.query('DELETE FROM servicos WHERE id = ? AND barbeiro_id = ?', [servico_id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Serviço não encontrado ou você não tem permissão para deletá-lo." });
+        }
+        return res.json({ message: "Serviço deletado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao deletar serviço:", error);
+        return res.status(500).json({ error: "Erro interno ao deletar serviço." });
+    }
+});
+
+
+// --- ROTAS DE LISTAGEM DE SUPORTE (APIs que o Agendamento precisa) ---
+
+// Rota: GET /clientes
+app.get('/clientes', authenticateToken, async (req, res) => {
+    try {
+        const [clientes] = await db.query('SELECT id, nome, telefone FROM clientes ORDER BY nome');
+        return res.json(clientes);
+    } catch (error) {
+        console.error("Erro ao buscar clientes:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar clientes." });
+    }
+});
+
+// Rota: GET /barbeiros
+app.get('/barbeiros', authenticateToken, async (req, res) => {
+    try {
+        const [barbeiros] = await db.query('SELECT id, nome FROM barbeiros WHERE tipo_usuario = "barbeiro" AND status_ativacao = "ativa" ORDER BY nome');
+        return res.json(barbeiros);
+    } catch (error) {
+        console.error("Erro ao buscar barbeiros:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar barbeiros." });
+    }
+});
+
+// Rota: GET /servicos (Geral - para o Agendamento)
+app.get('/servicos', authenticateToken, async (req, res) => {
+    try {
+        const [servicos] = await db.query('SELECT id, nome, duracao_minutos, preco FROM servicos ORDER BY nome');
+        return res.json(servicos);
+    } catch (error) {
+        console.error("Erro ao buscar serviços:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar serviços." });
+    }
+});
+
+// -----------------------------------------------------------------
+// ROTAS DE AGENDAMENTO (IMPLEMENTAÇÃO COMPLETA)
+// -----------------------------------------------------------------
+
+// Rota Crítica: POST /agendamentos (Criação com Validação de Conflito)
+app.post('/agendamentos', authenticateToken, async (req, res) => {
+    const barbeiro_logado_id = req.user.id; 
+    const { cliente_id, barbeiro_id, servico_id, data_hora_inicio } = req.body; 
+
+    if (!cliente_id || !barbeiro_id || !servico_id || !data_hora_inicio) {
+        return res.status(400).json({ error: "Dados incompletos para agendamento." });
+    }
+
+    try {
+        // 1. Busca a Duração e Preço do Serviço
+        const [servicoRows] = await db.query('SELECT duracao_minutos, preco FROM servicos WHERE id = ?', [servico_id]);
+        
+        if (servicoRows.length === 0) {
+            return res.status(404).json({ error: "Serviço não encontrado." });
+        }
+        
+        const duracao_minutos = servicoRows[0].duracao_minutos;
+        const preco = servicoRows[0].preco;
+
+        // 2. Cálculo do Intervalo de Tempo (Inicio e Fim)
+        const inicio = new Date(data_hora_inicio);
+        const fim = new Date(inicio.getTime() + duracao_minutos * 60000); 
+        
+        const data_inicio_sql = inicio.toISOString().slice(0, 19).replace('T', ' ');
+        const data_fim_sql = fim.toISOString().slice(0, 19).replace('T', ' ');
+        
+        // 3. Lógica de Conflito (SELECT CRÍTICO)
+        const sqlConflito = `
+            SELECT id FROM agendamentos 
+            WHERE barbeiro_id = ? 
+            AND status != 'cancelado' 
+            AND (
+                (data_hora_inicio < ? AND data_hora_fim > ?) OR  /* Novo engloba existente ou toca */
+                (data_hora_inicio >= ? AND data_hora_inicio < ?)  /* Novo cai dentro de existente */
+            )
+        `;
+
+        const [conflitos] = await db.query(sqlConflito, [
+            barbeiro_id,
+            data_fim_sql, data_inicio_sql,
+            data_inicio_sql, data_fim_sql
+        ]);
+
+        if (conflitos.length > 0) {
+            return res.status(409).json({ error: "Conflito de horário! O barbeiro já está ocupado neste período." });
+        }
+
+        // 4. Inserção do Agendamento (Se não há conflito)
+        const sqlInsert = `
+            INSERT INTO agendamentos 
+            (cliente_id, barbeiro_id, servico_id, data_hora_inicio, data_hora_fim, status, valor_servico) 
+            VALUES (?, ?, ?, ?, ?, 'agendado', ?)
+        `;
+        const [result] = await db.query(sqlInsert, [
+            cliente_id, barbeiro_id, servico_id, data_inicio_sql, data_fim_sql, preco
+        ]);
+
+        return res.status(201).json({ id: result.insertId, message: "Agendamento criado com sucesso!", data_fim: data_fim_sql });
+
+    } catch (error) {
+        console.error("Erro ao criar agendamento:", error);
+        return res.status(500).json({ error: "Erro interno ao agendar o serviço." });
+    }
+});
+
+
+// Rota: GET /agendamentos (Lista para o Calendário)
+app.get('/agendamentos', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const startOfDay = getStartOfDay(); 
+
+    try {
+        const sql = `
+            SELECT 
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status,
+                c.nome AS nome_cliente, 
+                s.nome AS nome_servico, s.preco, s.duracao_minutos,
+                b.nome AS nome_barbeiro
+            FROM agendamentos a
+            JOIN clientes c ON a.cliente_id = c.id
+            JOIN servicos s ON a.servico_id = s.id
+            JOIN barbeiros b ON a.barbeiro_id = b.id
+            WHERE a.data_hora_inicio >= ? 
+            AND a.barbeiro_id = ? 
+            ORDER BY a.data_hora_inicio ASC
+        `;
+        
+        const [agendamentos] = await db.query(sql, [startOfDay, barbeiro_id]);
+
+        return res.json(agendamentos);
+
+    } catch (error) {
+        console.error("Erro ao listar agendamentos:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agendamentos." });
+    }
+});
+
+// Rota: PUT /agendamentos/:id (Atualiza status para 'concluido' ou 'cancelado')
+app.put('/agendamentos/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const barbeiro_id = req.user.id;
+    const { status } = req.body; 
+
+    if (!status || (status !== 'concluido' && status !== 'cancelado')) {
+        return res.status(400).json({ error: "Status inválido." });
+    }
+
+    try {
+        const sql = 'UPDATE agendamentos SET status = ? WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.query(sql, [status, id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Agendamento não encontrado ou acesso negado." });
+        }
+        
+        return res.status(200).json({ message: `Agendamento ID ${id} marcado como ${status}.` });
+
+    } catch (error) {
+        console.error("Erro ao atualizar agendamento:", error);
+        return res.status(500).json({ error: "Erro interno ao atualizar agendamento." });
+    }
+});
+
+// Rota: DELETE /agendamentos/:id (Placeholder)
+app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Rota DELETE Agendamento não implementada. Use PUT para status 'cancelado'." }); });
 
 
 const PORT = 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
