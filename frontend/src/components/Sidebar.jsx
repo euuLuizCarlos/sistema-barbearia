@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-// 🚨 FaClipboardList importado
-import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt, FaClipboardList } from 'react-icons/fa';
+// Importado FaClock para Horários
+import { FaHome, FaDollarSign, FaChartLine, FaCalendarAlt, FaCog, FaSignOutAlt, FaUserAlt, FaClipboardList, FaClock } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -13,9 +13,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { path: '/', name: 'Principal', icon: FaHome, isBottom: false },
         { path: '/transacoes', name: 'Transações', icon: FaDollarSign, isBottom: false },
         
-        // 🚨 NOVO ITEM ADICIONADO: MEUS SERVIÇOS 🚨
+        // --- ITENS DE GERENCIAMENTO ---
         { path: '/servicos', name: 'Meus Serviços', icon: FaClipboardList, isBottom: false },
-
+        { path: '/horarios', name: 'Meus Horários', icon: FaClock, isBottom: false }, // <--- NOVO ITEM ADICIONADO
+        
         { path: '/relatorio', name: 'Relatórios', icon: FaChartLine, isBottom: false },
         { path: '/agenda', name: 'Agenda', icon: FaCalendarAlt, isBottom: false },
         { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },

@@ -902,6 +902,94 @@ app.get('/servicos', authenticateToken, async (req, res) => {
     }
 });
 
+
+// ==========================================================
+// ROTAS CRUD DE HORÁRIOS DE ATENDIMENTO
+// ==========================================================
+
+// 1. LISTAR HORÁRIOS DO BARBEIRO LOGADO (READ)
+app.get('/horarios/meus', authenticateToken, async (req, res) => {
+    try {
+        const barbeiro_id = req.user.id;
+        // Ordena por dia da semana (ajuste a ordem se necessário, ex: de 1 a 7)
+        const [horarios] = await db.query('SELECT id, dia_semana, hora_inicio, hora_fim FROM horarios_atendimento WHERE barbeiro_id = ? ORDER BY FIELD(dia_semana, "segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"), hora_inicio', [barbeiro_id]);
+        return res.json(horarios);
+    } catch (error) {
+        console.error("Erro ao listar horários:", error);
+        return res.status(500).json({ error: "Erro interno ao listar horários." });
+    }
+});
+
+// 2. CRIAR NOVO HORÁRIO (CREATE)
+app.post('/horarios', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { dia_semana, hora_inicio, hora_fim } = req.body; 
+    
+    if (!dia_semana || !hora_inicio || !hora_fim) {
+        return res.status(400).json({ error: "Dia da semana, hora de início e fim são obrigatórios." });
+    }
+    
+    // Validação de horário básico: Hora fim não pode ser antes ou igual à hora início
+    if (hora_inicio >= hora_fim) {
+         return res.status(400).json({ error: "A hora de início deve ser anterior à hora de fim." });
+    }
+    
+    try {
+        const sql = 'INSERT INTO horarios_atendimento (barbeiro_id, dia_semana, hora_inicio, hora_fim) VALUES (?, ?, ?, ?)';
+        const [result] = await db.query(sql, [barbeiro_id, dia_semana, hora_inicio, hora_fim]);
+        
+        return res.status(201).json({ id: result.insertId, message: "Horário de atendimento criado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao criar horário:", error);
+        return res.status(500).json({ error: "Erro interno ao criar horário." });
+    }
+});
+
+// 3. ATUALIZAR HORÁRIO EXISTENTE (UPDATE)
+app.put('/horarios/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const horario_id = req.params.id;
+    const { dia_semana, hora_inicio, hora_fim } = req.body; 
+
+    if (!dia_semana || !hora_inicio || !hora_fim) {
+        return res.status(400).json({ error: "Dia da semana, hora de início e fim são obrigatórios." });
+    }
+
+    if (hora_inicio >= hora_fim) {
+         return res.status(400).json({ error: "A hora de início deve ser anterior à hora de fim." });
+    }
+    
+    try {
+        const sql = 'UPDATE horarios_atendimento SET dia_semana = ?, hora_inicio = ?, hora_fim = ? WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.query(sql, [dia_semana, hora_inicio, hora_fim, horario_id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Horário não encontrado ou você não tem permissão para editá-lo." });
+        }
+        return res.json({ message: "Horário atualizado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao atualizar horário:", error);
+        return res.status(500).json({ error: "Erro interno ao atualizar horário." });
+    }
+});
+
+// 4. DELETAR HORÁRIO (DELETE)
+app.delete('/horarios/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const horario_id = req.params.id;
+
+    try {
+        const [result] = await db.query('DELETE FROM horarios_atendimento WHERE id = ? AND barbeiro_id = ?', [horario_id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Horário não encontrado ou você não tem permissão para deletá-lo." });
+        }
+        return res.json({ message: "Horário deletado com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao deletar horário:", error);
+        return res.status(500).json({ error: "Erro interno ao deletar horário." });
+    }
+});
 // -----------------------------------------------------------------
 // ROTAS DE AGENDAMENTO (IMPLEMENTAÇÃO COMPLETA)
 // -----------------------------------------------------------------
