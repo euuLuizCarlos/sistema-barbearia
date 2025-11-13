@@ -20,34 +20,29 @@ const AgendamentoCliente = () => {
     
     // --- LÓGICA DE BUSCA DE DADOS INICIAIS ---
     useEffect(() => {
-        const fetchInitialData = async () => {
-            setLoading(true);
-            try {
-                // 1. Busca informações da Barbearia (Usando a rota de busca)
-                const infoResponse = await api.get(`/barbearias/busca?query=${barbeiroId}`);
-                
-                // Encontra a barbearia pelo ID
-                const info = infoResponse.data.find(b => b.barbeiro_id === parseInt(barbeiroId));
-                
-                if(!info) {
-                    setError("Barbearia não encontrada ou inativa.");
-                    setLoading(false);
-                    return;
-                }
-                setBarbeariaInfo(info);
-                
-                // 2. Busca serviços DESTE Barbeiro (ROTA PENDENTE no Node.js)
-                // Se a rota ainda não estiver implementada, causará um erro 404
-                const servicesResponse = await api.get(`/servicos/barbeiro/${barbeiroId}`); 
-                setServicos(servicesResponse.data);
+    const fetchInitialData = async () => {
+        setLoading(true);
+        try {
+            // 1. Busca informações da Barbearia (Usando a rota de busca)
+            // ... (restante do código)
 
-            } catch (err) {
-                 const status = err.response?.status;
-                if (status === 404) {
-                    setError("Erro 404: Rota de serviços do barbeiro não implementada no Node.js.");
-                } else {
-                     setError("Erro ao carregar dados iniciais. Verifique a API.");
-                }
+        } catch (err) {
+            // --- BLOCO CRÍTICO: ADICIONE ESTE LOG DETALHADO ---
+            const status = err.response?.status;
+            const message = err.response?.data?.error || err.message;
+            
+            console.error("ERRO CRÍTICO NA BUSCA DO AGENDAMENTOCLIENTE:", status, message); 
+            
+            if (status === 401 || status === 403) {
+                 // Autenticação falhou
+                 setError("Sessão expirada. Faça login novamente.");
+            } else if (status === 404) {
+                 // Rota não encontrada
+                 setError(`Barbearia ou Rota não encontrada. Rota: /servicos/barbeiro/${barbeiroId} (Verifique o ID e o Backend).`);
+            } else {
+                 // Outros erros
+                 setError("Erro ao carregar dados: " + message);
+            }
                 console.error(err);
             } finally {
                 setLoading(false);

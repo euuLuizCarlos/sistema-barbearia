@@ -20,7 +20,7 @@ import Register from './pages/Register';
 import AtivacaoConta from './pages/AtivacaoConta';
 import GerenciarServicos from './pages/GerenciarServicos'; 
 import GerenciarHorarios from './pages/GerenciarHorarios'; // <--- NOVO COMPONENTE
-
+import VisualizacaoBarbearia from './pages/VisualizacaoBarbearia';
 import DetalhesPerfil from './pages/DetalhesPerfil'; 
 import CadastroPerfil from './pages/CadastroPerfil'; 
 
@@ -99,20 +99,29 @@ const AppContent = () => {
                         {/* O ProfileGuard serve para redirecionar para o cadastro se o Barbeiro não tiver perfil completo */}
                         <Route element={<ProfileGuard />}> 
                             <Route path="/" element={<Dashboard />} />
+
+
                             <Route path="/transacoes" element={<Transacoes key={location.key} />} />
                             
                             {/* Rotas de Gerenciamento do Barbeiro */}
                             <Route path="/servicos" element={<GerenciarServicos />} />
+
                             <Route path="/horarios" element={<GerenciarHorarios />} /> {/* <--- ROTA DE HORÁRIOS */}
                             
                             <Route path="/relatorio" element={<Relatorios />} /> 
+
                             <Route path="/agenda" element={<Agenda />} />
+
                             <Route path="/configuracoes" element={<Configuracoes />} />
                             
                             {/* ROTA DE VISUALIZAÇÃO DO PERFIL */}
                             <Route path="/meu-perfil" element={<DetalhesPerfil />} />
                             
                             <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
+
+                            <Route path="/barbearia/:barbeiroId" element={<VisualizacaoBarbearia />} />
+
+
                         </Route>
                     </Route>
                     

@@ -157,10 +157,10 @@ Em Breve, Agendamentos aqui!                </p>
                     <div>
                         {barbearias.map(barbearia => (
                             <Link 
-                                to={`/agendamento/${barbearia.barbeiro_id}`} 
-                                key={barbearia.barbeiro_id} 
-                                style={{ textDecoration: 'none', color: primaryColor }}
-                            >
+                                to={`/barbearia/${barbearia.barbeiro_id}`} 
+    key={barbearia.barbeiro_id} 
+    style={{ textDecoration: 'none', color: primaryColor }}
+>
                                 <div style={{ padding: '15px 0', borderBottom: '1px solid #EEEEEE', display: 'flex', alignItems: 'center' }}>
                                     
                                     {/* Ícone/Foto da Barbearia */}

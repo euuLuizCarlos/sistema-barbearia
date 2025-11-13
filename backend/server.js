@@ -1251,6 +1251,7 @@ app.get('/barbearias/busca', async (req, res) => {
 });
 
 
+// server.js (Adicionar esta rota ou verificar se ela está correta)
 // Rota: GET /servicos/barbeiro/:barbeiroId
 // Funcionalidade: Lista todos os serviços ATIVOS de um barbeiro específico
 app.get('/servicos/barbeiro/:barbeiroId', async (req, res) => {
@@ -1260,14 +1261,61 @@ app.get('/servicos/barbeiro/:barbeiroId', async (req, res) => {
     try {
         // Seleciona as colunas essenciais da tabela 'servicos'
         const sql = 'SELECT id, nome, preco, duracao_minutos, barbeiro_id FROM servicos WHERE barbeiro_id = ? ORDER BY nome';
-        // Assumindo que 'db' é o seu pool de conexão MySQL
         const [servicos] = await db.query(sql, [barbeiroId]);
         
-        return res.json(servicos);
+        // CORREÇÃO ESSENCIAL: O preço e a duração devem ser formatados ou validados
+        const servicosFormatados = servicos.map(s => ({
+            ...s,
+            preco: parseFloat(s.preco).toFixed(2), // Garante duas casas decimais
+            // A duração já está em minutos e é um número
+        }));
+
+        return res.json(servicosFormatados);
         
     } catch (error) {
         console.error("Erro ao listar serviços de barbeiro:", error);
         return res.status(500).json({ error: "Erro interno ao buscar serviços do profissional." });
+    }
+});
+
+
+app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
+    const { barbeiroId } = req.params;
+
+    try {
+        const sql = `
+            SELECT 
+                b.id AS barbeiro_id, 
+                pb.nome_barbearia,
+                pb.rua,
+                pb.numero,
+                pb.bairro,
+                pb.localidade,
+                pb.uf,
+                b.foto_perfil,
+                b.nome AS nome_barbeiro,
+                b.email
+            FROM barbeiros b
+            JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
+            WHERE b.id = ? 
+            AND b.status_ativacao = 'ativa' 
+            AND b.tipo_usuario IN ('barbeiro', 'admin')
+        `;
+        const [results] = await db.query(sql, [barbeiroId]);
+
+        if (results.length === 0) {
+            return res.status(404).json({ error: "Barbearia não encontrada ou inativa." });
+        }
+        
+        const barbearia = results[0];
+        // Adiciona a URL completa da foto para o Frontend
+        barbearia.foto_url = barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null;
+
+        return res.json(barbearia);
+
+    } catch (error) {
+        console.error("Erro ao buscar detalhes da barbearia:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar detalhes." });
     }
 });
 
