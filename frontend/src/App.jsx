@@ -21,6 +21,9 @@ import AtivacaoConta from './pages/AtivacaoConta';
 import GerenciarServicos from './pages/GerenciarServicos'; 
 import GerenciarHorarios from './pages/GerenciarHorarios'; // <--- NOVO COMPONENTE
 import VisualizacaoBarbearia from './pages/VisualizacaoBarbearia';
+import SelecionarHorario from './pages/SelecionarHorario';
+import MeusAgendamentos from './pages/MeusAgendamentos';
+
 import DetalhesPerfil from './pages/DetalhesPerfil'; 
 import CadastroPerfil from './pages/CadastroPerfil'; 
 
@@ -120,6 +123,10 @@ const AppContent = () => {
                             <Route path="/transacoes/:id" element={<h2>Detalhe de Transação</h2>} />
 
                             <Route path="/barbearia/:barbeiroId" element={<VisualizacaoBarbearia />} />
+
+                            <Route path="/agendamento/:barbeiroId/selecionar-horario/:servicoId" element={<SelecionarHorario />} />
+
+                            <Route path="/meus-agendamentos" element={<MeusAgendamentos />} />
 
 
                         </Route>

@@ -10,9 +10,17 @@ import { FaSave, FaUserCog } from 'react-icons/fa';
 
 // --- FUNÇÕES DE MÁSCARA E VALIDAÇÃO (Necessárias para este componente) ---
 const maskCep = (value) => { /* ... */ return value ? value.replace(/\D/g, "").substring(0, 8).replace(/^(\d{5})(\d)/, "$1-$2") : ""; };
+
+
 const maskCpfCnpj = (value) => { /* ... */ return value ? value.replace(/\D/g, "").length <= 11 ? value.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2") : value.replace(/\D/g, "").substring(0, 14).replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2") : ""; };
+
+
 const validateCep = (cep) => /^\d{5}-?\d{3}$/.test(cep);
+
+
 const validateCpfCnpj = (doc) => { const cleaned = doc.replace(/\D/g, ''); return cleaned.length === 11 || cleaned.length === 14; };
+
+
 const UFs = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
 

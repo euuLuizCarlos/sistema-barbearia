@@ -14,7 +14,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     // --- DEFINIÇÕES DOS ITENS DE NAVEGAÇÃO ---
     // 1. O item 'Início' é a base para todos (Cliente e Barbeiro)
     const baseItems = [
-        { path: '/', name: 'Início', icon: FaHome, isBottom: false }, // CHAVE ÚNICA AQUI
+        { path: '/', name: 'Painel', icon: FaHome, isBottom: false }, // CHAVE ÚNICA AQUI
     ];
 
     // 2. Itens Exclusivos de Gestão (Barbeiro/Admin)
@@ -28,11 +28,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     
     // 3. Itens Exclusivos/Específicos do Cliente
     const clientItems = [
-        // A rota '/' já é a busca no DashboardCliente, então não a repetimos
-        { path: '/meus-agendamentos', name: 'Meus Agendamentos', icon: FaCalendarAlt, isBottom: false },
-        { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
         // Usamos o Perfil como o 'Menu' geral para o Cliente
         { path: userProfilePath, name: 'Menu / Perfil', icon: FaAlignJustify, isBottom: false }, 
+
+        { path: '/meus-agendamentos', name: 'Meus Agendamentos', icon: FaCalendarAlt, isBottom: false },
     ];
     
     // 4. Monta a lista final e o item de rodapé

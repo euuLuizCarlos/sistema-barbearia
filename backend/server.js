@@ -1070,40 +1070,66 @@ app.delete('/horarios/:id', authenticateToken, async (req, res) => {
 // -----------------------------------------------------------------
 
 // Rota Crítica: POST /agendamentos (Criação com Validação de Conflito)
-app.post('/agendamentos', authenticateToken, async (req, res) => {
-    const barbeiro_logado_id = req.user.id; 
-    const { cliente_id, barbeiro_id, servico_id, data_hora_inicio } = req.body; 
+// server.js (Localize e atualize a rota POST /agendamentos)
 
-    if (!cliente_id || !barbeiro_id || !servico_id || !data_hora_inicio) {
+// server.js (Rota POST /agendamentos)
+
+app.post('/agendamentos', authenticateToken, async (req, res) => {
+    // 1. Extração dos dados (TODOS OS CAMPOS)
+    const { cliente_id, barbeiro_id, servico_id, data_hora_inicio, valor_servico, observacao, preferencia } = req.body; 
+    
+    // Validação básica
+    if (!cliente_id || !barbeiro_id || !servico_id || !data_hora_inicio || valor_servico === undefined) {
         return res.status(400).json({ error: "Dados incompletos para agendamento." });
     }
 
     try {
-        // 1. Busca a Duração e Preço do Serviço
-        const [servicoRows] = await db.query('SELECT duracao_minutos, preco FROM servicos WHERE id = ?', [servico_id]);
+        // 2. Busca a Duração do Serviço (Para calcular data_hora_fim)
+        const [servicoRows] = await db.query('SELECT duracao_minutos FROM servicos WHERE id = ?', [servico_id]);
         
         if (servicoRows.length === 0) {
             return res.status(404).json({ error: "Serviço não encontrado." });
         }
         
         const duracao_minutos = servicoRows[0].duracao_minutos;
-        const preco = servicoRows[0].preco;
 
-        // 2. Cálculo do Intervalo de Tempo (Inicio e Fim)
-        const inicio = new Date(data_hora_inicio);
-        const fim = new Date(inicio.getTime() + duracao_minutos * 60000); 
+        // 3. Cálculo do Intervalo de Tempo (CORREÇÃO DE FUSO HORÁRIO)
+        // Adicionamos 'T' entre data e hora para garantir que o objeto Date seja criado 
+        // sem deslocamento do fuso horário local do servidor (corrigindo o erro de 3 horas).
+        const localDateTimeString = data_hora_inicio.replace(' ', 'T'); 
+const inicio = new Date(localDateTimeString);
+
+if (isNaN(inicio.getTime())) {
+     return res.status(400).json({ error: "Formato de data/hora de início inválido." });
+}
+
+const fim = new Date(inicio.getTime() + duracao_minutos * 60000); 
+
+// 2. FUNÇÃO AUXILIAR: Formata o objeto Date para YYYY-MM-DD HH:MM:SS local
+// *IGNORANDO O DESLOCAMENTO DE FUSO HORÁRIO DO SERVIDOR/ISOSTRING()*
+const toLocalSQLString = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+// 3. Formatação para SQL (USA HORA LOCAL EXATA)
+const data_inicio_sql = toLocalSQLString(inicio);
+const data_fim_sql = toLocalSQLString(fim);
         
-        const data_inicio_sql = inicio.toISOString().slice(0, 19).replace('T', ' ');
-        const data_fim_sql = fim.toISOString().slice(0, 19).replace('T', ' ');
-        
-        // 3. Lógica de Conflito (SELECT CRÍTICO)
+        // 4. Lógica de Conflito (Checa se o barbeiro está livre - MANTIDA)
         const sqlConflito = `
             SELECT id FROM agendamentos 
             WHERE barbeiro_id = ? 
             AND status != 'cancelado' 
             AND (
-                (data_hora_inicio < ? AND data_hora_fim > ?) OR  /* Novo engloba existente ou toca */
-                (data_hora_inicio >= ? AND data_hora_inicio < ?)  /* Novo cai dentro de existente */
+                (data_hora_inicio < ? AND data_hora_fim > ?) OR 
+                (data_hora_inicio >= ? AND data_hora_inicio < ?) 
             )
         `;
 
@@ -1117,21 +1143,28 @@ app.post('/agendamentos', authenticateToken, async (req, res) => {
             return res.status(409).json({ error: "Conflito de horário! O barbeiro já está ocupado neste período." });
         }
 
-        // 4. Inserção do Agendamento (Se não há conflito)
+        // 5. Inserção do Agendamento (COM TODOS OS CAMPOS)
         const sqlInsert = `
             INSERT INTO agendamentos 
-            (cliente_id, barbeiro_id, servico_id, data_hora_inicio, data_hora_fim, status, valor_servico) 
-            VALUES (?, ?, ?, ?, ?, 'agendado', ?)
+            (cliente_id, barbeiro_id, servico_id, data_hora_inicio, data_hora_fim, status, valor_servico, observacao, preferencia) 
+            VALUES (?, ?, ?, ?, ?, 'agendado', ?, ?, ?)
         `;
         const [result] = await db.query(sqlInsert, [
-            cliente_id, barbeiro_id, servico_id, data_inicio_sql, data_fim_sql, preco
+            cliente_id, 
+            barbeiro_id, 
+            servico_id, 
+            data_inicio_sql, 
+            data_fim_sql, 
+            parseFloat(valor_servico),
+            observacao || null, 
+            preferencia || null
         ]);
 
         return res.status(201).json({ id: result.insertId, message: "Agendamento criado com sucesso!", data_fim: data_fim_sql });
 
     } catch (error) {
         console.error("Erro ao criar agendamento:", error);
-        return res.status(500).json({ error: "Erro interno ao agendar o serviço." });
+        return res.status(500).json({ error: 'Erro interno ao agendar o serviço.' });
     }
 });
 
@@ -1144,15 +1177,15 @@ app.get('/agendamentos', authenticateToken, async (req, res) => {
     try {
         const sql = `
             SELECT 
-                a.id, a.data_hora_inicio, a.data_hora_fim, a.status,
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, 
+                a.valor_servico, /* GARANTA QUE ESTE CAMPO ESTÁ AQUI */
+                a.observacao, a.preferencia,
                 c.nome AS nome_cliente, 
-                s.nome AS nome_servico, s.preco, s.duracao_minutos,
-                b.nome AS nome_barbeiro
+                s.nome AS nome_servico
             FROM agendamentos a
             JOIN clientes c ON a.cliente_id = c.id
             JOIN servicos s ON a.servico_id = s.id
-            JOIN barbeiros b ON a.barbeiro_id = b.id
-            WHERE a.data_hora_inicio >= ? 
+            WHERE a.data_hora_fim >= ? 
             AND a.barbeiro_id = ? 
             ORDER BY a.data_hora_inicio ASC
         `;
@@ -1192,6 +1225,45 @@ app.put('/agendamentos/:id', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: "Erro interno ao atualizar agendamento." });
     }
 });
+
+
+// server.js (Adicione esta nova rota)
+
+// Rota: PUT /agendamentos/:id/status
+app.put('/agendamentos/:id/status', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // Deve ser 'cancelado' ou 'concluido'
+    const barbeiro_id = req.user.id; // Garante que apenas o barbeiro responsável pode alterar
+
+    // 1. Validação de Status
+    if (!['cancelado', 'concluido'].includes(status)) {
+        return res.status(400).json({ error: "Status inválido fornecido. Use 'cancelado' ou 'concluido'." });
+    }
+
+    try {
+        // 2. Query de Atualização
+        const sql = `
+            UPDATE agendamentos 
+            SET status = ? 
+            WHERE id = ? AND barbeiro_id = ?
+        `;
+        const [result] = await db.query(sql, [status, id, barbeiro_id]);
+
+        if (result.affectedRows === 0) {
+            // Se não encontrou ou o barbeiro logado não é o responsável pelo agendamento
+            return res.status(404).json({ error: "Agendamento não encontrado ou acesso negado." });
+        }
+        
+        // 3. Resposta de Sucesso
+        return res.json({ message: `Agendamento ID ${id} atualizado para ${status} com sucesso.` });
+
+    } catch (error) {
+        console.error(`Erro ao atualizar status do agendamento ${id}:`, error);
+        return res.status(500).json({ error: 'Erro interno ao atualizar o agendamento.' });
+    }
+});
+
+
 
 // Rota: DELETE /agendamentos/:id (Placeholder)
 app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(501).json({ error: "Rota DELETE Agendamento não implementada. Use PUT para status 'cancelado'." }); });
@@ -1319,6 +1391,169 @@ app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
     }
 });
 
+
+// src/server.js (Nova Rota)
+
+// Rota: GET /barbearia/:barbeiroPrincipalId/profissionais
+// Objetivo: Listar o Barbeiro Principal + quaisquer outros profissionais vinculados
+app.get('/barbearia/:barbeiroPrincipalId/profissionais', async (req, res) => {
+    const { barbeiroPrincipalId } = req.params;
+
+    // Se você não tem um conceito de "sub-barbeiros" no DB, apenas liste o principal
+    // (Ajuste esta query se tiver uma tabela de 'BarbeiroSecundario' ou 'Funcionario')
+    const sql = 'SELECT id, nome, foto_perfil FROM barbeiros WHERE id = ? AND status_ativacao = "ativa"';
+    
+    try {
+        const [profissionais] = await db.query(sql, [barbeiroPrincipalId]);
+
+        if (profissionais.length === 0) {
+            return res.status(404).json({ error: "Nenhum profissional ativo encontrado nesta unidade." });
+        }
+        
+        // Simulação: Se você tivesse sub-barbeiros, o código para buscá-los viria aqui
+        // Mas por enquanto, retorna apenas o principal
+        
+        return res.json(profissionais.map(p => ({
+            id: p.id,
+            nome: p.nome,
+            foto_url: p.foto_perfil ? `http://localhost:3000${p.foto_perfil}` : null
+        })));
+        
+    } catch (error) {
+        console.error("Erro ao listar profissionais da unidade:", error);
+        return res.status(500).json({ error: "Erro interno." });
+    }
+});
+
+
+// src/server.js (Nova Rota Crítica)
+
+// Rota: GET /agendamento/:barbeiroId/disponibilidade/:data/:servicoId
+// Objetivo: Retorna a lista de horários de início disponíveis para aquele serviço e data.
+app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req, res) => {
+    const { barbeiroId, data: dataString, servicoId } = req.params;
+
+    // Determina o dia da semana (ex: 'segunda', 'terca')
+    const date = new Date(dataString + 'T00:00:00'); // Adiciona T00 para evitar fuso horário local
+    const diaSemanaIndex = date.getDay(); // 0=Dom, 1=Seg...
+    const dias = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const dia_semana = dias[diaSemanaIndex];
+
+    try {
+        // 1. Busca a Duração do Serviço
+        const [servicoRows] = await db.query('SELECT duracao_minutos FROM servicos WHERE id = ?', [servicoId]);
+        if (servicoRows.length === 0) {
+            return res.status(404).json({ error: "Serviço não encontrado." });
+        }
+        const duracao_minutos = servicoRows[0].duracao_minutos;
+
+        // 2. Busca o Horário de Atendimento (Regra)
+        const sqlHorario = 'SELECT hora_inicio, hora_fim FROM horarios_atendimento WHERE barbeiro_id = ? AND dia_semana = ?';
+        const [horariosTrabalho] = await db.query(sqlHorario, [barbeiroId, dia_semana]);
+
+        if (horariosTrabalho.length === 0) {
+            return res.json({ disponiveis: [], message: "O profissional não trabalha neste dia." });
+        }
+
+        // 3. Busca os Agendamentos Existentes (Conflitos)
+        const dataInicio = `${dataString} 00:00:00`;
+        const dataFim = `${dataString} 23:59:59`;
+        const sqlConflitos = `
+            SELECT data_hora_inicio, data_hora_fim FROM agendamentos 
+            WHERE barbeiro_id = ? 
+            AND status != 'cancelado' 
+            AND data_hora_inicio BETWEEN ? AND ?
+        `;
+        const [agendamentosOcupados] = await db.query(sqlConflitos, [barbeiroId, dataInicio, dataFim]);
+        
+        // 4. LÓGICA DE GERAÇÃO DE SLOTS (A SER FEITA EM JAVASCRIPT/NODE)
+        const slotsDisponiveis = [];
+
+        for (const horario of horariosTrabalho) {
+            let currentTime = new Date(`${dataString}T${horario.hora_inicio}`);
+            const endTime = new Date(`${dataString}T${horario.hora_fim}`);
+            
+            while (currentTime.getTime() + duracao_minutos * 60000 <= endTime.getTime()) {
+                const slotEnd = new Date(currentTime.getTime() + duracao_minutos * 60000);
+                let isAvailable = true;
+
+                // Verifica conflito com agendamentos existentes
+                for (const agendamento of agendamentosOcupados) {
+                    const bookedStart = new Date(agendamento.data_hora_inicio);
+                    const bookedEnd = new Date(agendamento.data_hora_fim);
+
+                    // Conflito: O novo slot começa antes do fim do agendamento E termina depois do início do agendamento
+                    if (
+                        currentTime.getTime() < bookedEnd.getTime() && 
+                        slotEnd.getTime() > bookedStart.getTime()
+                    ) {
+                        isAvailable = false;
+                        // Pula o tempo até o fim do agendamento para continuar a busca
+                        currentTime = bookedEnd; 
+                        break;
+                    }
+                }
+
+                if (isAvailable) {
+                    // Adiciona o slot formatado (HH:MM)
+                    slotsDisponiveis.push(
+                        currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    );
+                    // Avança para o próximo slot (por exemplo, 15 minutos se o corte for 15 min)
+                    currentTime = new Date(currentTime.getTime() + duracao_minutos * 60000);
+                }
+            }
+        }
+
+        // Retorna a lista de horários
+        return res.json({ disponiveis: slotsDisponiveis, message: "Horários calculados com sucesso." });
+
+    } catch (error) {
+        console.error("Erro no cálculo de disponibilidade:", error);
+        return res.status(500).json({ error: "Erro interno no cálculo." });
+    }
+});
+
+// server.js (Nova Rota de Listagem para o Cliente)
+
+// Rota: GET /agendamentos/cliente/:clienteId
+app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) => {
+    const { clienteId } = req.params;
+    const userIdLogado = req.user.id;
+    const userType = req.user.tipo; // Pega o tipo de usuário do token
+
+    // 1. Verificação de Segurança (Garante que o cliente só veja os próprios agendamentos)
+    // Se não for um cliente tentando ver seu próprio ID, ou se não for um barbeiro/admin, bloqueia.
+    if (userType === 'cliente' && String(clienteId) !== String(userIdLogado)) {
+        return res.status(403).json({ error: "Acesso negado. Você só pode visualizar seus próprios agendamentos." });
+    }
+    
+    // Nota: Se a rota for chamada pelo Barbeiro (que também é 'clienteId' no agendamento), 
+    // ele verá os agendamentos dele como cliente. Se o Barbeiro quiser ver todos os 
+    // agendamentos da barbearia, ele usará a rota /agendamentos (geral).
+
+    try {
+        const sql = `
+            SELECT 
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia,
+                b.nome AS nome_barbeiro, 
+                s.nome AS nome_servico
+            FROM agendamentos a
+            JOIN barbeiros b ON a.barbeiro_id = b.id
+            JOIN servicos s ON a.servico_id = s.id
+            WHERE a.cliente_id = ?
+            ORDER BY a.data_hora_inicio DESC
+        `;
+        
+        const [agendamentos] = await db.query(sql, [clienteId]);
+
+        return res.json(agendamentos);
+
+    } catch (error) {
+        console.error("Erro ao listar agendamentos do cliente:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agendamentos." });
+    }
+});
 
 const PORT = 3000;
 app.listen(PORT, () => {
