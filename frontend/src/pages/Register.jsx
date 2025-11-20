@@ -279,7 +279,19 @@ const Register = () => {
             let response;
 
             if (userType === 'cliente') {
-                const dadosCliente = { nome: formData.nome, email: formData.email, password: formData.password, telefone: formData.telefone };
+                const cleanedDocumento = (formData.documento || '').replace(/\D/g, '');
+                if (cleanedDocumento && !isValidCPF(cleanedDocumento)) {
+                    setMessage('CPF inválido. Verifique os dígitos.');
+                    return;
+                }
+
+                const dadosCliente = { 
+                    nome: formData.nome, 
+                    email: formData.email, 
+                    password: formData.password, 
+                    telefone: (formData.telefone || '').replace(/\D/g, ''), 
+                    documento: cleanedDocumento || undefined
+                };
                 response = await api.post('/auth/register/cliente', dadosCliente);
             } else {
                 // Barbeiro: monta FormData para suportar upload de foto
@@ -339,6 +351,16 @@ const Register = () => {
             <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
             <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required style={inputBaseStyle} />
             <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required style={{ ...inputBaseStyle, marginBottom: '20px' }} />
+
+            {userType === 'cliente' && (
+                <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
+                    <h3 style={{ marginTop: 0, color: '#023047' }}>Dados Pessoais</h3>
+                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF" style={inputBaseStyle} />
+                    {documentoChecking && <p style={{ margin: '6px 0', color: '#666' }}>Validando documento...</p>}
+                    {documentoError && <p style={{ margin: '6px 0', color: '#ffdddd', background: '#a00', padding: '6px', borderRadius: '4px' }}>{documentoError}</p>}
+                    <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={inputBaseStyle} />
+                </div>
+            )}
 
             {userType === 'barbeiro' && (
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>

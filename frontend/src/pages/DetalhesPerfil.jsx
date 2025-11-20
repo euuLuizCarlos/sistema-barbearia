@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { FaEdit, FaUserCircle, FaHome } from 'react-icons/fa'; // Importado FaHome para o botão
+import { useAuth } from '../contexts/AuthContext';
+import ExclusaoConta from '../components/Configuracoes/ExclusaoConta';
 
 // --- FUNÇÕES DE MÁSCARA PARA EXIBIÇÃO (Mantidas) ---
 const formatCpfCnpj = (value) => {
@@ -37,24 +39,28 @@ const DetalhesPerfil = () => {
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState('');
     const [fotoUrl, setFotoUrl] = useState(null); 
+    const { user } = useAuth();
 
     const fetchProfile = useCallback(async () => {
         setLoading(true);
         setApiError('');
         try {
-            const response = await api.get('/perfil/barbeiro');
-            
-            if (response.data.profileExists) {
-                const data = response.data.data;
-                setPerfilData(data);
-                
-                if (data.foto_perfil) {
-                    setFotoUrl(data.foto_perfil);
-                }
+            // Se for cliente, usa rota específica para cliente
+            if (user && user.userType === 'cliente') {
+                const resp = await api.get('/perfil/cliente');
+                setPerfilData(resp.data.data || {});
+                setFotoUrl(null);
             } else {
-                setApiError("Perfil não encontrado. Redirecionando para o cadastro.");
-                setTimeout(() => navigate('/cadastro-perfil'), 1000);
-                return;
+                const response = await api.get('/perfil/barbeiro');
+                if (response.data.profileExists) {
+                    const data = response.data.data;
+                    setPerfilData(data);
+                    if (data.foto_perfil) setFotoUrl(data.foto_perfil);
+                } else {
+                    setApiError("Perfil não encontrado. Redirecionando para o cadastro.");
+                    setTimeout(() => navigate('/perfil/cadastro'), 1000);
+                    return;
+                }
             }
         } catch (err) {
             setApiError("Erro ao carregar os dados do perfil.");
@@ -65,7 +71,7 @@ const DetalhesPerfil = () => {
 
     useEffect(() => {
         fetchProfile();
-    }, [fetchProfile]);
+    }, [fetchProfile, user]);
     
     // --- RENDERIZAÇÃO ---
     if (loading) { return <h2 style={{ padding: '50px', textAlign: 'center' }}>Carregando Perfil...</h2>; }
@@ -149,27 +155,37 @@ const DetalhesPerfil = () => {
                             <FaUserCircle size={100} color="#ccc" /> 
                         )}
                     </div>
-                    <h2 style={{ margin: '0', color: '#333' }}>{perfilData.nome_barbeiro}</h2> 
+                    <h2 style={{ margin: '0', color: '#333' }}>{perfilData.nome_barbeiro || perfilData.nome}</h2> 
                 </div>
                 
                 {/* SEÇÃO DE DETALHES DE TEXTO */}
                 <div style={{ flexGrow: 1, borderLeft: '1px solid #eee', paddingLeft: '30px' }}>
-                    <p><strong>Nome da Barbearia:</strong> {perfilData.nome_barbearia}</p>
+                    {user && user.userType === 'cliente' ? (
+                        <>
+                            <p><strong>Nome:</strong> {perfilData.nome || user.userName}</p>
+                            <p><strong>Email:</strong> {perfilData.email || ''}</p>
+                            <p><strong>Telefone:</strong> {perfilData.telefone || ''}</p>
+                            {perfilData.documento && <p><strong>CPF:</strong> {formatCpfCnpj(perfilData.documento)}</p>}
+                        </>
+                    ) : (
+                        <>
+                            <p><strong>Nome da Barbearia:</strong> {perfilData.nome_barbearia}</p>
+                            <p>
+                                <strong>Documento (CPF/CNPJ):</strong> 
+                                {formatCpfCnpj(perfilData.documento)}
+                            </p>
+                            <p><strong>Telefone:</strong> {perfilData.telefone}</p>
+                            <hr style={{ margin: '15px 0', borderColor: '#eee' }}/>
+                            <p><strong>Endereço:</strong> {formatAddress(perfilData)}</p>
+                            {perfilData.complemento && <p><strong>Complemento:</strong> {perfilData.complemento}</p>}
+                        </>
+                    )}
                     
-                    {/* 🚨 Formatação de CPF/CNPJ Corrigida */}
-                    <p>
-                        <strong>Documento (CPF/CNPJ):</strong> 
-                        {formatCpfCnpj(perfilData.documento)}
-                    </p>
-                    
-                    <p><strong>Telefone:</strong> {perfilData.telefone}</p>
-                    <hr style={{ margin: '15px 0', borderColor: '#eee' }}/>
-                    
-                    {/* 🚨 Formatação de Endereço e CEP Corrigida */}
-                    <p><strong>Endereço:</strong> {formatAddress(perfilData)}</p>
-                    
-                    {perfilData.complemento && <p><strong>Complemento:</strong> {perfilData.complemento}</p>}
                 </div>
+            </div>
+            {/* Seção de exclusão de conta disponível para qualquer usuário */}
+            <div style={{ marginTop: '25px' }}>
+                <ExclusaoConta />
             </div>
         </div>
     );

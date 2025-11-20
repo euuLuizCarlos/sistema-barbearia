@@ -26,6 +26,7 @@ import MeusAgendamentos from './pages/MeusAgendamentos';
 
 import DetalhesPerfil from './pages/DetalhesPerfil'; 
 import CadastroPerfil from './pages/CadastroPerfil'; 
+import PerfilEditar from './pages/PerfilEditar';
 
 // ==========================================================
 // Componentes Estruturais (Header, PrivateRoute)
@@ -95,7 +96,7 @@ const AppContent = () => {
                         
                         {/* ROTAS DE PERFIL E EDIÇÃO (Acessíveis a usuários logados) */}
                         <Route path="/perfil/cadastro" element={<CadastroPerfil />} /> 
-                        <Route path="/perfil/editar" element={<CadastroPerfil />} /> 
+                        <Route path="/perfil/editar" element={<PerfilEditar />} /> 
                         
                         
                         {/* ROTAS PRINCIPAIS PROTEGIDAS PELO PROFILE GUARD (SEGUNDO NÍVEL) */}

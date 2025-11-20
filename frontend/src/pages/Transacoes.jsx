@@ -13,9 +13,7 @@ const Transacoes = () => {
     const [movimentacoes, setMovimentacoes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [movimentacaoToEdit, setMovimentacaoToEdit] = useState(null); 
-    const [saldoTotal, setSaldoTotal] = useState(0); 
-    const [totalReceita, setTotalReceita] = useState(0);
-    const [totalDespesa, setTotalDespesa] = useState(0);
+    
     const [selectedMovimentacao, setSelectedMovimentacao] = useState(null); 
     
     // ESTADOS DE FILTRO
@@ -37,20 +35,10 @@ const Transacoes = () => {
         
         await new Promise(resolve => setTimeout(resolve, 50)); 
 
-        try {
-            const [listResponse, saldoResponse, totaisResponse] = await Promise.all([
-                api.get('/movimentacoes'), // Lista do dia
-                api.get('/saldo'), // Saldo do dia
-                api.get('/totais/diarios') // Receitas e Despesas do Dia
-            ]);
-            
-            // 1. Atualiza Totais
-            setSaldoTotal(saldoResponse.data.saldo_total || 0); 
-            setTotalReceita(totaisResponse.data.receita_total || 0);
-            setTotalDespesa(totaisResponse.data.despesa_total || 0);
-            
-            // 2. Atualiza a Lista
-            setMovimentacoes(listResponse.data);
+        try {
+            const listResponse = await api.get('/movimentacoes');
+            // Atualiza a Lista (totais agora são exibidos somente nos relatórios)
+            setMovimentacoes(listResponse.data);
 
         } catch (error) {
             console.error("Erro ao buscar dados ou saldo:", error);
@@ -138,46 +126,7 @@ const Transacoes = () => {
                 {/* LADO DIREITO: LISTA E RELATÓRIO */}
                 <div style={{ flexGrow: 1 }}>
                     
-                    {/* BLOCO DE RELATÓRIO RESUMO (RECEITAS, DESPESAS E SALDO/LUCRO) - ESTILIZADO */}
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-around', 
-                        marginBottom: '30px', 
-                        padding: '20px 0', 
-                        borderRadius: '8px',
-                        backgroundColor: '#fff', 
-                        boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
-                    }}>
-                        
-                        {/* COLUNA 1: RECEITAS BRUTAS */}
-                        <div style={{ color: '#006400', textAlign: 'center', padding: '0 10px' }}>
-                            <h3 style={{ margin: '0 0 5px 0' }}>Receitas Brutas</h3>
-                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '1.2em' }}>R$ {parseFloat(totalReceita).toFixed(2)}</p>
-                        </div>
-                        
-                        {/* COLUNA 2: SALDO / LUCRO LÍQUIDO DO DIA (DESTAQUE) */}
-                        <div style={{ 
-                            color: saldoTotal >= 0 ? '#023047' : '#cc0000', // Cores Chaves
-                            textAlign: 'center',
-                            padding: '0 25px', 
-                            borderLeft: '1px solid #ddd', 
-                            borderRight: '1px solid #ddd', 
-                            fontWeight: 'bold'
-                        }}>
-                            <h3 style={{ margin: '0 0 5px 0', fontSize: '1.4em', color: '#FFB703' }}>
-                                Lucro Total
-                            </h3>
-                            <p style={{ margin: 0, fontWeight: 'bolder', fontSize: '1.8em' }}>
-                                R$ {parseFloat(saldoTotal).toFixed(2)}
-                            </p>
-                        </div>
-
-                        {/* COLUNA 3: DESPESAS TOTAIS */}
-                        <div style={{ color: '#8b0000', textAlign: 'center', padding: '0 10px' }}>
-                            <h3 style={{ margin: '0 0 5px 0' }}>Despesas Totais</h3>
-                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '1.2em' }}>R$ {parseFloat(totalDespesa).toFixed(2)}</p>
-                        </div>
-                    </div>
+            {/* Totais diários foram removidos desta tela — mantidos apenas nos relatórios */}
 
 
                     {/* ÁREA DE FILTROS */}

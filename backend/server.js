@@ -161,15 +161,22 @@ const isValidDocumento = (doc) => {
     return false;
 };
 
-// Função para formatar a data para SQL (YYYY-MM-DD)
-const getTodayDate = () => new Date().toISOString().split('T')[0];
+// Função para formatar a data para SQL (YYYY-MM-DD) usando hora local
+const getTodayDate = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
+// Retorna a meia-noite do dia atual no horário local no formato MySQL 'YYYY-MM-DD HH:MM:SS'
 const getStartOfDay = () => {
     const today = new Date();
-    // Zera o tempo para 00:00:00 na hora local do servidor (Brasil/Node)
-    today.setHours(0, 0, 0, 0); 
-    // Formata como string DATETIME do MySQL (Ex: '2025-11-09 00:00:00')
-    return today.toISOString().slice(0, 19).replace('T', ' '); 
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day} 00:00:00`;
 };
 
 // ==========================================================
@@ -294,20 +301,33 @@ app.post('/auth/register', (req, res) => {
 
 // Rota dedicada para Cadastro de Cliente
 app.post('/auth/register/cliente', async (req, res) => {
-    const { nome, email, password, telefone } = req.body; // Campos da tabela 'clientes'
+    const { nome, email, password, telefone, documento } = req.body; // Campos da tabela 'clientes'
     
     if (!nome || !email || !password) {
         return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
     }
 
     try {
+        // Se foi enviado documento, valida (esperamos CPF para clientes)
+        const cleanedDocumento = documento ? String(documento).replace(/\D/g, '') : null;
+        if (cleanedDocumento && cleanedDocumento.length !== 11) {
+            return res.status(400).json({ error: 'Documento inválido para cliente. Use CPF com 11 dígitos.' });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Insere na tabela 'clientes' (Sem a coluna status_ativacao ou tipo_usuario)
-        const sql = 'INSERT INTO clientes (nome, email, password_hash, telefone) VALUES (?, ?, ?, ?)';
-        
-        const [result] = await db.query(sql, [nome, email, hashedPassword, telefone || null]);
-        
+        // Insere na tabela 'clientes'. Se a coluna 'documento' não existir no banco,
+        // o DB retornará erro — trate como opcional no frontend caso seu esquema não tenha sido atualizado.
+        const sql = cleanedDocumento
+            ? 'INSERT INTO clientes (nome, email, password_hash, telefone, documento) VALUES (?, ?, ?, ?, ?)'
+            : 'INSERT INTO clientes (nome, email, password_hash, telefone) VALUES (?, ?, ?, ?)';
+
+        const params = cleanedDocumento
+            ? [nome, email, hashedPassword, telefone || null, cleanedDocumento]
+            : [nome, email, hashedPassword, telefone || null];
+
+        const [result] = await db.query(sql, params);
+
         // Sucesso: Cliente não precisa de ativação.
         res.status(201).json({ message: 'Cliente registrado com sucesso!', userId: result.insertId });
 
@@ -414,25 +434,34 @@ app.post('/auth/ativar-conta', async (req, res) => {
 });
 
 
-// Rota para EXCLUSÃO DA CONTA (Deleta o registro do barbeiro logado)
+// Rota para EXCLUSÃO DA CONTA (Suporta Barbeiro e Cliente)
 app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
+    const userId = req.user.id;
     const userEmail = req.user.email;
-    
-    try {
-        const sql = 'DELETE FROM barbeiros WHERE id = ?';
-        const [result] = await db.query(sql, [barbeiro_id]);
+    const userType = req.user.tipo;
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "Conta não encontrada ou já excluída." });
+    try {
+        let sql;
+        let params = [userId];
+
+        if (userType === 'barbeiro' || userType === 'admin') {
+            sql = 'DELETE FROM barbeiros WHERE id = ?';
+        } else if (userType === 'cliente') {
+            sql = 'DELETE FROM clientes WHERE id = ?';
+        } else {
+            return res.status(400).json({ error: 'Tipo de usuário inválido para exclusão.' });
         }
-        
-        console.log(`Conta do Barbeiro ${userEmail} (ID: ${barbeiro_id}) excluída com sucesso.`);
-        
-        return res.status(200).json({ message: "Conta excluída permanentemente. Redirecionando..." });
+
+        const [result] = await db.query(sql, params);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
+        }
+
+        console.log(`Conta do usuário ${userEmail} (ID: ${userId}, tipo: ${userType}) excluída com sucesso.`);
+        return res.status(200).json({ message: 'Conta excluída permanentemente. Redirecionando...' });
 
     } catch (err) {
-        console.error('Erro na exclusão de conta (Provável falha de FOREIGN KEY):', err);
+        console.error('Erro na exclusão de conta:', err);
         return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
     }
 });
@@ -953,26 +982,34 @@ app.get('/relatorio/anual/:ano', authenticateToken, async (req, res) => {
 
 
 
-// Rota para EXCLUSÃO DA CONTA (Deleta o registro do barbeiro logado)
+// Rota para EXCLUSÃO DA CONTA (Suporta Barbeiro e Cliente)
 app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
-    const barbeiro_id = req.user.id;
+    const userId = req.user.id;
     const userEmail = req.user.email;
-    
-    // ATENÇÃO: Esta operação DELETA TODOS os dados do barbeiro.
-    try {
-        const sql = 'DELETE FROM barbeiros WHERE id = ?';
-        const [result] = await db.query(sql, [barbeiro_id]);
+    const userType = req.user.tipo;
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "Conta não encontrada ou já excluída." });
+    try {
+        let sql;
+        let params = [userId];
+
+        if (userType === 'barbeiro' || userType === 'admin') {
+            sql = 'DELETE FROM barbeiros WHERE id = ?';
+        } else if (userType === 'cliente') {
+            sql = 'DELETE FROM clientes WHERE id = ?';
+        } else {
+            return res.status(400).json({ error: 'Tipo de usuário inválido para exclusão.' });
         }
-        
-        console.log(`Conta do Barbeiro ${userEmail} (ID: ${barbeiro_id}) excluída com sucesso.`);
-        
-        return res.status(200).json({ message: "Conta excluída permanentemente. Redirecionando..." });
+
+        const [result] = await db.query(sql, params);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
+        }
+
+        console.log(`Conta do usuário ${userEmail} (ID: ${userId}, tipo: ${userType}) excluída com sucesso.`);
+        return res.status(200).json({ message: 'Conta excluída permanentemente. Redirecionando...' });
 
     } catch (err) {
-        console.error('Erro na exclusão de conta (Provável falha de FOREIGN KEY):', err);
+        console.error('Erro na exclusão de conta:', err);
         return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
     }
 });
@@ -1895,5 +1932,68 @@ app.get('/perfil/documento-exists', async (req, res) => {
     } catch (err) {
         console.error('Erro ao checar documento:', err);
         return res.status(500).json({ error: 'Erro interno ao checar documento.' });
+    }
+});
+
+// Rota: GET /perfil/cliente - Retorna os dados do cliente logado
+app.get('/perfil/cliente', authenticateToken, async (req, res) => {
+    const cliente_id = req.user.id;
+    try {
+        // Verifica se a coluna 'documento' existe na tabela 'clientes' do schema atual
+        const [colCheck] = await db.query(
+            `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'clientes' AND COLUMN_NAME = 'documento'`,
+            [process.env.DB_NAME]
+        );
+        const hasDocumento = colCheck && colCheck[0] && colCheck[0].cnt > 0;
+
+        const sql = hasDocumento
+            ? 'SELECT id, nome, email, telefone, documento FROM clientes WHERE id = ?'
+            : 'SELECT id, nome, email, telefone FROM clientes WHERE id = ?';
+
+        const [rows] = await db.query(sql, [cliente_id]);
+        if (!rows || rows.length === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
+        // Se não existir documento, garantimos que o campo esteja presente com null para o frontend
+        const row = rows[0];
+        if (!hasDocumento) row.documento = null;
+        return res.json({ data: row });
+    } catch (err) {
+        console.error('Erro ao buscar perfil do cliente:', err);
+        return res.status(500).json({ error: 'Erro interno ao buscar perfil do cliente.' });
+    }
+});
+
+// Rota: POST /perfil/cliente - Atualiza os dados do cliente logado
+app.post('/perfil/cliente', authenticateToken, async (req, res) => {
+    const cliente_id = req.user.id;
+    const { nome, telefone, documento } = req.body;
+
+    if (!nome) return res.status(400).json({ error: 'Nome é obrigatório.' });
+
+    try {
+        const cleanedDocumento = documento ? String(documento).replace(/\D/g, '') : null;
+        if (cleanedDocumento && cleanedDocumento.length !== 11) {
+            return res.status(400).json({ error: 'Documento inválido. Use CPF válido com 11 dígitos.' });
+        }
+
+        // Verifica se a coluna 'documento' existe para decidir se atualizamos também esse campo
+        const [colCheck] = await db.query(
+            `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'clientes' AND COLUMN_NAME = 'documento'`,
+            [process.env.DB_NAME]
+        );
+        const hasDocumento = colCheck && colCheck[0] && colCheck[0].cnt > 0;
+
+        if (hasDocumento && cleanedDocumento) {
+            const sql = 'UPDATE clientes SET nome = ?, telefone = ?, documento = ? WHERE id = ?';
+            await db.query(sql, [nome, telefone || null, cleanedDocumento, cliente_id]);
+        } else {
+            const sql = 'UPDATE clientes SET nome = ?, telefone = ? WHERE id = ?';
+            await db.query(sql, [nome, telefone || null, cliente_id]);
+        }
+
+        return res.json({ message: 'Perfil do cliente atualizado com sucesso.' });
+
+    } catch (err) {
+        console.error('Erro ao atualizar perfil do cliente:', err);
+        return res.status(500).json({ error: 'Erro interno ao atualizar perfil.' });
     }
 });
