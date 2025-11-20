@@ -95,6 +95,72 @@ async function getTaxaCartao(barbeiroId) {
     }
 }
 
+// ======= Validação de CPF e CNPJ (algoritmos oficiais) =======
+const isValidCPF = (cpf) => {
+    if (!cpf) return false;
+    const str = String(cpf).replace(/\D/g, '');
+    if (str.length !== 11) return false;
+    if (/^(\d)\1+$/.test(str)) return false; // todos iguais
+
+    const calc = (t) => {
+        let sum = 0;
+        for (let i = 0; i < t; i++) {
+            sum += parseInt(str.charAt(i)) * ((t + 1) - i);
+        }
+        const rev = 11 - (sum % 11);
+        return rev > 9 ? 0 : rev;
+    };
+
+    const digit1 = calc(9);
+    const digit2 = calc(10);
+
+    return digit1 === parseInt(str.charAt(9)) && digit2 === parseInt(str.charAt(10));
+};
+
+const isValidCNPJ = (cnpj) => {
+    if (!cnpj) return false;
+    const str = String(cnpj).replace(/\D/g, '');
+    if (str.length !== 14) return false;
+    if (/^(\d)\1+$/.test(str)) return false;
+
+    const calc = (t) => {
+        let size = t;
+        let numbers = str.substring(0, size);
+        let sum = 0;
+        let pos = size - 7;
+
+        for (let i = size; i >= 1; i--) {
+            sum += parseInt(numbers.charAt(size - i)) * pos--;
+            if (pos < 2) pos = 9;
+        }
+
+        const result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+        return result;
+    };
+
+    const digit1 = calc(12);
+    const digit2 = (() => {
+        const temp = str.substring(0, 12) + digit1;
+        let sum = 0;
+        let pos = 2;
+        for (let i = temp.length - 1; i >= 0; i--) {
+            sum += parseInt(temp.charAt(i)) * pos;
+            pos = pos === 9 ? 2 : pos + 1;
+        }
+        return sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    })();
+
+    return digit1 === parseInt(str.charAt(12)) && digit2 === parseInt(str.charAt(13));
+};
+
+const isValidDocumento = (doc) => {
+    if (!doc) return false;
+    const cleaned = String(doc).replace(/\D/g, '');
+    if (cleaned.length === 11) return isValidCPF(cleaned);
+    if (cleaned.length === 14) return isValidCNPJ(cleaned);
+    return false;
+};
+
 // Função para formatar a data para SQL (YYYY-MM-DD)
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -133,28 +199,97 @@ const authenticateToken = (req, res, next) => {
 // ==========================================================
 
 // Rota para Cadastro de Novo Usuário (Barbeiro ou Cliente)
-app.post('/auth/register', async (req, res) => {
-    const { nome, email, password, tipo_usuario } = req.body; 
-    
-    if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
-        return res.status(400).json({ error: 'Todos os campos, incluindo o tipo de usuário, são obrigatórios.' });
-    }
-
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario) VALUES (?, ?, ?, ?)';
-        
-        const [result] = await db.query(sql, [nome, email, hashedPassword, tipo_usuario]);
-        
-        res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: result.insertId, userName: nome });
-
-    } catch (err) {
-        if (err.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ error: 'Email já está em uso.' });
+// Rota para Cadastro (aceita multipart/form-data para permitir upload de foto durante o registro)
+app.post('/auth/register', (req, res) => {
+    // Usa o middleware de upload para permitir campo 'foto_perfil' opcional
+    upload(req, res, async (err) => {
+        if (err instanceof multer.MulterError) {
+            console.error('Erro Multer no registro:', err);
+            return res.status(500).json({ error: 'Erro no upload do arquivo.' });
+        } else if (err) {
+            console.error('Erro desconhecido no upload:', err);
+            return res.status(500).json({ error: 'Erro no processamento do cadastro.' });
         }
-        console.error('Erro no registro:', err);
-        res.status(500).json({ error: 'Erro interno no servidor.' });
-    }
+
+        try {
+            // Extrai campos do body (quando multipart, o body estará em req.body)
+            const { nome, email, password, tipo_usuario, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade } = req.body;
+
+            if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
+                return res.status(400).json({ error: 'Nome, email, senha e tipo de usuário são obrigatórios.' });
+            }
+
+            // Se for barbeiro, valida campos obrigatórios do perfil e verifica duplicidade de documento ANTES de criar o usuário
+            if (tipo_usuario === 'barbeiro') {
+                const cleanedDocumento = (documento || '').replace(/\D/g, '');
+                if (!nome_barbearia || !cleanedDocumento || !telefone || !rua || !numero || !bairro || !cep || !uf || !localidade) {
+                    return res.status(400).json({ error: 'Todos os campos do perfil da barbearia são obrigatórios.' });
+                }
+
+                // Valida algoritmo CPF/CNPJ
+                if (!isValidDocumento(cleanedDocumento)) {
+                    return res.status(400).json({ error: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' });
+                }
+
+                try {
+                    const [existing] = await db.query('SELECT barbeiro_id FROM perfil_barbeiro WHERE documento = ?', [cleanedDocumento]);
+                    if (existing && existing.length > 0) {
+                        return res.status(409).json({ error: 'Documento (CPF/CNPJ) já cadastrado em outro perfil.' });
+                    }
+                } catch (checkErr) {
+                    console.error('Erro ao verificar documento duplicado:', checkErr);
+                    return res.status(500).json({ error: 'Erro ao validar documento.' });
+                }
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            // Insere o registro base na tabela barbeiros (foto será atualizada posteriormente se houver arquivo)
+            // Insere já com status_ativacao 'ativa' para simplificar fluxo (sem chave)
+            const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario, status_ativacao) VALUES (?, ?, ?, ?, ?)';
+            const [result] = await db.query(sql, [nome, email, hashedPassword, tipo_usuario, 'ativa']);
+            const userId = result.insertId;
+
+            // Se veio um arquivo, renomeia para incluir o ID e atualiza a coluna foto_perfil
+            if (req.file) {
+                try {
+                    const oldFilename = req.file.filename;
+                    const filenameWithId = `foto-${userId}-${oldFilename}`;
+                    const oldPath = req.file.path;
+                    const newPath = path.join(uploadsDir, filenameWithId);
+                    fs.renameSync(oldPath, newPath);
+                    const fotoPath = `/uploads/${filenameWithId}`;
+                    await db.query('UPDATE barbeiros SET foto_perfil = ? WHERE id = ?', [fotoPath, userId]);
+                } catch (fileErr) {
+                    console.warn('Aviso: falha ao processar a foto enviada durante o registro:', fileErr.message);
+                }
+            }
+
+            // Se for barbeiro e vieram dados de perfil, salva na tabela perfil_barbeiro
+            if (tipo_usuario === 'barbeiro') {
+                // Requer os campos mínimos do perfil; se não vierem, salva apenas o registro base
+                // grava o perfil usando o documento sem formatação
+                const cleanedDocumento = (documento || '').replace(/\D/g, '');
+                if (!isValidDocumento(cleanedDocumento)) {
+                    // não falha todo o registro do usuário base, mas solicita correção do perfil
+                    return res.status(400).json({ error: 'Documento inválido (CPF/CNPJ com dígitos incorretos).' });
+                }
+                const finalComplemento = complemento === '' ? null : complemento;
+                const sqlPerfil = `INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                await db.query(sqlPerfil, [userId, nome, nome_barbearia, cleanedDocumento, telefone.replace(/\D/g, ''), rua, numero, bairro, finalComplemento, cep.replace(/\D/g, ''), uf, localidade]);
+            }
+
+            return res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: userId, userName: nome });
+
+        } catch (err) {
+            // Se houver erro de duplicidade, tenta mapear e retornar 409
+            if (err && err.code === 'ER_DUP_ENTRY') {
+                return res.status(409).json({ error: 'Email já está em uso.' });
+            }
+            console.error('Erro no registro:', err);
+            return res.status(500).json({ error: 'Erro interno no servidor.' });
+        }
+    });
 });
 
 // Rota dedicada para Cadastro de Cliente
@@ -351,6 +486,12 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser preenchidos.' });
     }
 
+    // Validação do documento (CPF/CNPJ)
+    const cleanedDocumento = String(documento).replace(/\D/g, '');
+    if (!isValidDocumento(cleanedDocumento)) {
+        return res.status(400).json({ error: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' });
+    }
+
     try {
         // SQL FINAL CORRIGIDO: Inclui nome_barbeiro no UPDATE
         const sql = `INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) 
@@ -371,7 +512,7 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
         const finalComplemento = complemento === '' ? null : complemento; 
 
         await db.query(sql, [
-            barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, finalComplemento, cep, uf, localidade
+            barbeiro_id, nome_barbeiro, nome_barbearia, cleanedDocumento, String(telefone).replace(/\D/g, ''), rua, numero, bairro, finalComplemento, String(cep).replace(/\D/g, ''), uf, localidade
         ]);
 
         res.status(200).json({ message: 'Perfil profissional salvo com sucesso!' });
@@ -1170,27 +1311,42 @@ const data_fim_sql = toLocalSQLString(fim);
 
 
 // Rota: GET /agendamentos (Lista para o Calendário)
+// server.js (Localize e atualize a rota GET /agendamentos)
+
 app.get('/agendamentos', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    const startOfDay = getStartOfDay(); 
-
+    
+    // 1. Definição da Data Atual e Data de HOJE (apenas YYYY-MM-DD)
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' '); 
+    const today = new Date().toISOString().substring(0, 10);
+    
     try {
         const sql = `
             SELECT 
-                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, 
-                a.valor_servico, /* GARANTA QUE ESTE CAMPO ESTÁ AQUI */
-                a.observacao, a.preferencia,
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
                 c.nome AS nome_cliente, 
                 s.nome AS nome_servico
             FROM agendamentos a
             JOIN clientes c ON a.cliente_id = c.id
             JOIN servicos s ON a.servico_id = s.id
-            WHERE a.data_hora_fim >= ? 
+            
+            /* FILTRO DE BASE: A data de início deve ser HOJE ou no FUTURO. */
+            WHERE DATE(a.data_hora_inicio) >= ? 
             AND a.barbeiro_id = ? 
-            ORDER BY a.data_hora_inicio ASC
+            
+            /* * ORDENAÇÃO DE PRIORIDADE:
+             * 1. HOJE vs. FUTURO: 0 se for HOJE, 1 se for FUTURO. (HOJE VEM PRIMEIRO)
+             * 2. STATUS: 0 se for AGENDADO (Pendente), 1 se for Concluído/Cancelado.
+             * 3. CRONOLOGIA: Hora mais cedo primeiro.
+             */
+            ORDER BY 
+                CASE WHEN DATE(a.data_hora_inicio) = ? THEN 0 ELSE 1 END,
+                CASE WHEN a.status = 'agendado' THEN 0 ELSE 1 END,
+                a.data_hora_inicio ASC
         `;
         
-        const [agendamentos] = await db.query(sql, [startOfDay, barbeiro_id]);
+        // Passamos 'today' (data YYYY-MM-DD) para o filtro WHERE e para o filtro CASE
+        const [agendamentos] = await db.query(sql, [today, barbeiro_id, today]);
 
         return res.json(agendamentos);
 
@@ -1230,33 +1386,72 @@ app.put('/agendamentos/:id', authenticateToken, async (req, res) => {
 // server.js (Adicione esta nova rota)
 
 // Rota: PUT /agendamentos/:id/status
+// server.js (Localize e substitua a rota PUT /agendamentos/:id/status)
+
 app.put('/agendamentos/:id/status', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body; // Deve ser 'cancelado' ou 'concluido'
-    const barbeiro_id = req.user.id; // Garante que apenas o barbeiro responsável pode alterar
-
+    const { status, motivo } = req.body; 
+    
+    // DEFINIÇÕES DE SEGURANÇA BASEADAS NO TIPO
+    const userType = req.user.tipo;
+    const userIdLogado = req.user.id;
+    
+    // A rota deve ser acessível tanto pelo barbeiro quanto pelo cliente (para cancelar)
+    const clienteId = userType === 'cliente' ? userIdLogado : null;
+    const barbeiroId = userType === 'barbeiro' ? userIdLogado : null;
+    
     // 1. Validação de Status
-    if (!['cancelado', 'concluido'].includes(status)) {
+    if (!['concluido', 'cancelado'].includes(status)) {
         return res.status(400).json({ error: "Status inválido fornecido. Use 'cancelado' ou 'concluido'." });
     }
 
-    try {
-        // 2. Query de Atualização
-        const sql = `
-            UPDATE agendamentos 
-            SET status = ? 
-            WHERE id = ? AND barbeiro_id = ?
-        `;
-        const [result] = await db.query(sql, [status, id, barbeiro_id]);
+    let query = `
+        UPDATE agendamentos 
+        SET status = ?
+    `;
+    let params = [status];
+    
+    // 2. ADICIONA O MOTIVO DE CANCELAMENTO E QUEM CANCELou (APENAS SE O STATUS FOR CANCELADO)
+    if (status === 'cancelado') {
+        if (motivo) {
+            query += `, motivo_cancelamento = ?`;
+            params.push(motivo);
+        }
 
+        // Indica quem realizou o cancelamento: 'barbeiro' ou 'cliente'
+        const canceladoPor = userType === 'barbeiro' ? 'barbeiro' : (userType === 'cliente' ? 'cliente' : null);
+        if (canceladoPor) {
+            query += `, cancelado_por = ?`;
+            params.push(canceladoPor);
+        }
+    }
+    
+    // 3. FILTROS DE SEGURANÇA (Para garantir que apenas o dono/barbeiro responsável altere)
+    query += ` WHERE id = ?`;
+    params.push(id);
+
+    // Se for um barbeiro logado, ele só pode alterar status dos agendamentos dele
+    if (barbeiroId) {
+        query += ` AND barbeiro_id = ?`;
+        params.push(barbeiroId);
+    } 
+    // Se for um cliente logado, ele só pode CANCELAR os agendamentos DELE (e só se estiver 'agendado')
+    else if (clienteId && status === 'cancelado') {
+        query += ` AND cliente_id = ? AND status = 'agendado'`;
+        params.push(clienteId);
+    } 
+    // Cliente não pode marcar como 'concluido' ou alterar agendamentos de outros
+
+    try {
+        // 4. Executa a Query usando o objeto DB
+        const [result] = await db.query(query, params); // <--- CORREÇÃO AQUI
+        
         if (result.affectedRows === 0) {
-            // Se não encontrou ou o barbeiro logado não é o responsável pelo agendamento
-            return res.status(404).json({ error: "Agendamento não encontrado ou acesso negado." });
+            return res.status(404).json({ error: "Agendamento não encontrado ou sem permissão para alteração." });
         }
         
-        // 3. Resposta de Sucesso
-        return res.json({ message: `Agendamento ID ${id} atualizado para ${status} com sucesso.` });
-
+        return res.json({ message: `Agendamento ${id} atualizado para ${status} com sucesso.` });
+        
     } catch (error) {
         console.error(`Erro ao atualizar status do agendamento ${id}:`, error);
         return res.status(500).json({ error: 'Erro interno ao atualizar o agendamento.' });
@@ -1499,7 +1694,7 @@ app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req,
                     slotsDisponiveis.push(
                         currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                     );
-                    // Avança para o próximo slot (por exemplo, 15 minutos se o corte for 15 min)
+                    // Avança para o próximo slot
                     currentTime = new Date(currentTime.getTime() + duracao_minutos * 60000);
                 }
             }
@@ -1535,7 +1730,7 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
     try {
         const sql = `
             SELECT 
-                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia,
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
                 b.nome AS nome_barbeiro, 
                 s.nome AS nome_servico
             FROM agendamentos a
@@ -1555,7 +1750,150 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
     }
 });
 
+
+
+// server.js (Nova Rota: GET /agendamentos/data)
+
+app.get('/agendamentos/data', authenticateToken, async (req, res) => {
+    // A data é enviada como parâmetro de query, ex: /agendamentos/data?data=2025-11-15
+    const { data } = req.query; 
+    const barbeiro_id = req.user.id;
+    
+    if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+        return res.status(400).json({ error: "O parâmetro 'data' é obrigatório e deve ser YYYY-MM-DD." });
+    }
+
+    try {
+        const sql = `
+            SELECT 
+                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
+                c.nome AS nome_cliente, 
+                s.nome AS nome_servico
+            FROM agendamentos a
+            JOIN clientes c ON a.cliente_id = c.id
+            JOIN servicos s ON a.servico_id = s.id
+            WHERE a.barbeiro_id = ? 
+            AND DATE(a.data_hora_inicio) = ? 
+            
+            /* Priorização: Agendados vêm primeiro, depois ordem cronológica */
+            ORDER BY 
+                CASE WHEN a.status = 'agendado' THEN 0 ELSE 1 END,
+                a.data_hora_inicio ASC
+        `;
+        
+        const [agendamentos] = await db.query(sql, [barbeiro_id, data]);
+
+        return res.json(agendamentos);
+
+    } catch (error) {
+        console.error("Erro ao pesquisar agendamentos por data:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agendamentos pela data." });
+    }
+});
+
+// server.js (Nova Rota: POST /comanda/fechar)
+
+// server.js (Nova Rota: POST /comanda/fechar - SEM COMISSÃO)
+
+app.post('/comanda/fechar', authenticateToken, async (req, res) => {
+    // Dados de entrada do Frontend (NÃO PRECISA MAIS DE comissao_percentual)
+    const { agendamento_id, valor_cobrado, forma_pagamento } = req.body;
+    const barbeiro_id = req.user.id; 
+
+    if (!agendamento_id || valor_cobrado === undefined || !forma_pagamento) {
+        return res.status(400).json({ error: "Dados de fechamento incompletos." });
+    }
+    
+    const valorCobrado = parseFloat(valor_cobrado);
+
+    // Inicia a transação
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        // 1. CALCULAR TAXA (Se for cartão)
+        let valorLiquido = valorCobrado;
+        let taxaValor = 0;
+        
+        if (forma_pagamento === 'cartao') {
+            // Buscamos a taxa do barbeiro logado
+            const taxaMaquininha = await getTaxaCartao(barbeiro_id); 
+            taxaValor = valorCobrado * (taxaMaquininha / 100);
+            valorLiquido = valorCobrado - taxaValor;
+        }
+
+        // 2. REGISTRAR MOVIMENTAÇÃO FINANCEIRA (Receita Líquida/Bruta)
+        const descricaoReceita = `Receita - Agendamento #${agendamento_id} (${forma_pagamento})`;
+        const sqlInsertReceita = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
+        
+        await connection.query(sqlInsertReceita, [
+            barbeiro_id,
+            descricaoReceita,
+            valorLiquido, // Salva o valor líquido/bruto
+            'receita',
+            'servico',
+            forma_pagamento
+        ]);
+
+        // 3. REGISTRAR MOVIMENTAÇÃO FINANCEIRA (Despesa da Taxa, se houver)
+        if (taxaValor > 0) {
+            const descricaoTaxa = `Despesa - Taxa Cartão Ref: Agd #${agendamento_id}`;
+            const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
+            await connection.query(sqlInsertTaxa, [
+                barbeiro_id,
+                descricaoTaxa,
+                taxaValor,
+                'despesa',
+                'taxa',
+                'cartao'
+            ]);
+        }
+        
+        // 4. ATUALIZAR STATUS DO AGENDAMENTO PARA 'concluido'
+        const sqlUpdateAgendamento = 'UPDATE agendamentos SET status = ?, valor_servico = ? WHERE id = ? AND barbeiro_id = ?';
+        await connection.query(sqlUpdateAgendamento, ['concluido', valorCobrado, agendamento_id, barbeiro_id]);
+
+        // Fim da transação: Confirma todas as operações
+        await connection.commit();
+        connection.release();
+
+        return res.status(200).json({ 
+            message: "Comanda fechada e receita registrada com sucesso!",
+            valor_receita: valorLiquido
+        });
+
+    } catch (error) {
+        // Se algo falhar, desfaz todas as operações
+        await connection.rollback();
+        connection.release();
+        
+        console.error("Erro no fechamento da comanda:", error);
+        return res.status(500).json({ error: `Falha ao fechar comanda. As alterações foram desfeitas.` });
+    }
+});
+
+
 const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
+});
+
+// Rota: GET /perfil/documento-exists?documento=...
+// Objetivo: verificar rapidamente se um CPF/CNPJ já está cadastrado (retorna { exists: true/false })
+app.get('/perfil/documento-exists', async (req, res) => {
+    const { documento } = req.query;
+    if (!documento) return res.status(400).json({ error: 'Parâmetro documento é obrigatório.' });
+
+    const cleaned = String(documento).replace(/\D/g, '');
+    if (!isValidDocumento(cleaned)) {
+        return res.status(400).json({ error: 'Documento inválido (CPF/CNPJ com dígitos incorretos).' });
+    }
+
+    try {
+        const [rows] = await db.query('SELECT barbeiro_id FROM perfil_barbeiro WHERE documento = ?', [cleaned]);
+        return res.json({ exists: rows && rows.length > 0 });
+    } catch (err) {
+        console.error('Erro ao checar documento:', err);
+        return res.status(500).json({ error: 'Erro interno ao checar documento.' });
+    }
 });

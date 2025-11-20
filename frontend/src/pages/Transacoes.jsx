@@ -6,6 +6,7 @@ import ListaMovimentacoes from '../components/ControleCaixa/ListaMovimentacoes';
 import RelatorioMovimentacaoDetalhe from '../components/ControleCaixa/RelatorioMovimentacaoDetalhe';
 import api from '../services/api'; 
 import { useAuth } from '../contexts/AuthContext'; 
+import { useUi } from '../contexts/UiContext';
 
 const Transacoes = () => {
     // VARIÁVEIS DE ESTADO
@@ -64,18 +65,20 @@ const Transacoes = () => {
     const handleViewDetails = (movimentacao) => { setSelectedMovimentacao(movimentacao); };
     const handleCloseDetails = () => { setSelectedMovimentacao(null); };
 
-    const handleDelete = async (id) => {
-      if (window.confirm(`Tem certeza que deseja excluir a movimentação ID ${id}?`)) {
-          try {
-              await api.delete(`/movimentacoes/${id}`);
-              alert('Movimentação excluída com sucesso!');
-              fetchMovimentacoes(); 
-          } catch (error) {
-              console.error('Erro ao deletar movimentação:', error);
-              alert('Erro ao deletar movimentação.');
-          }
-      }
-    };
+    const ui = useUi();
+
+    const handleDelete = async (id) => {
+      const ok = await ui.confirm(`Tem certeza que deseja excluir a movimentação ID ${id}?`);
+      if (!ok) return;
+      try {
+          await api.delete(`/movimentacoes/${id}`);
+          ui.showPostIt('Movimentação excluída com sucesso!', 'success');
+          fetchMovimentacoes(); 
+      } catch (error) {
+          console.error('Erro ao deletar movimentação:', error);
+          ui.showPostIt('Erro ao deletar movimentação.', 'error');
+      }
+    };
 
     // useEffect que chama o fetchMovimentacoes 
     useEffect(() => {

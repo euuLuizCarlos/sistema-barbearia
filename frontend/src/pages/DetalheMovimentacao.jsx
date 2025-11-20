@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useUi } from '../contexts/UiContext';
 
 const DetalheMovimentacao = () => {
     // Pega o ID da URL (ex: /transacoes/15)
     const { id } = useParams(); 
     const navigate = useNavigate(); // Hook para voltar à página anterior
+    const ui = useUi();
     const [movimentacao, setMovimentacao] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -19,7 +21,7 @@ const DetalheMovimentacao = () => {
                 setMovimentacao(response.data);
             } catch (error) {
                 console.error(`Erro ao buscar detalhes da movimentação ID ${id}:`, error);
-                alert('Movimentação não encontrada ou erro na API.');
+                ui.showPostIt('Movimentação não encontrada ou erro na API.', 'error');
                 navigate('/transacoes'); // Volta para a lista se falhar
             } finally {
                 setLoading(false);

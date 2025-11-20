@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { FaEdit, FaTrashAlt, FaSave, FaClock, FaCalendarTimes } from 'react-icons/fa';
+import { useUi } from '../contexts/UiContext';
 
 // =======================================================
 // DEFINIÇÕES FORA DO COMPONENTE
@@ -133,11 +134,12 @@ const GerenciarHorarios = () => {
         }
     };
     
+    const ui = useUi();
+
     // --- FUNÇÃO PARA DESATIVAR UM DIA (DELETE TODOS OS TURNOS) ---
     const handleDesativarDia = async (diaDaSemana) => {
-        if (!window.confirm(`Tem certeza que deseja DESATIVAR o atendimento da ${getDayLabel(diaDaSemana)}? Isso removerá todos os horários deste dia.`)) {
-            return;
-        }
+        const ok = await ui.confirm(`Tem certeza que deseja DESATIVAR o atendimento da ${getDayLabel(diaDaSemana)}? Isso removerá todos os horários deste dia.`);
+        if (!ok) return;
 
         setMessage(`Desativando ${getDayLabel(diaDaSemana)}...`);
         setApiError('');
@@ -151,29 +153,32 @@ const GerenciarHorarios = () => {
             }
             
             setMessage(`Atendimento de ${getDayLabel(diaDaSemana)} desativado com sucesso.`);
+            ui.showPostIt(`Atendimento de ${getDayLabel(diaDaSemana)} desativado com sucesso.`, 'success');
             fetchHorarios();
             
         } catch (error) {
             const errorMsg = error.response?.data?.error || `Erro ao desativar ${getDayLabel(diaDaSemana)}.`;
             setApiError(errorMsg);
+            ui.showPostIt(errorMsg, 'error');
         }
     };
     
     // --- FUNÇÃO PARA DELETAR UM TURNO ESPECÍFICO ---
     const handleDeleteTurno = async (id) => {
-        if (!window.confirm("Deseja DELETAR este turno? Ele será removido do dia correspondente.")) {
-            return;
-        }
+        const ok = await ui.confirm('Deseja DELETAR este turno? Ele será removido do dia correspondente.');
+        if (!ok) return;
         setMessage('Deletando turno...');
         setApiError('');
 
         try {
             await api.delete(`/horarios/${id}`);
             setMessage('Turno deletado com sucesso!');
+            ui.showPostIt('Turno deletado com sucesso!', 'success');
             fetchHorarios();
         } catch (error) {
             const errorMsg = error.response?.data?.error || 'Erro ao deletar o turno.';
             setApiError(errorMsg);
+            ui.showPostIt(errorMsg, 'error');
         }
     }
     

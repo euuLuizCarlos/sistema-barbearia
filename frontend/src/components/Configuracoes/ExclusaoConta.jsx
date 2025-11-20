@@ -2,18 +2,19 @@
 import React, { useState } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUi } from '../../contexts/UiContext';
 import { FaTrashAlt } from 'react-icons/fa';
 
 const ExclusaoConta = () => {
     const { logout } = useAuth();
+    const ui = useUi();
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
 
     const handleDelete = async () => {
         // Confirmação de segurança dupla (CRÍTICO)
-        if (!window.confirm("ATENÇÃO: A exclusão é permanente! Todos os seus dados (agendamentos, transações) serão perdidos. Tem certeza que deseja prosseguir?")) {
-            return;
-        }
+        const ok = await ui.confirm('ATENÇÃO: A exclusão é permanente! Todos os seus dados (agendamentos, transações) serão perdidos. Tem certeza que deseja prosseguir?');
+        if (!ok) return;
 
         setLoading(true);
         setMessage('');
@@ -22,8 +23,7 @@ const ExclusaoConta = () => {
             // Chama a nova API DELETE /auth/delete-account
             await api.delete('/auth/delete-account');
 
-            setMessage('Sua conta foi excluída com sucesso.');
-            
+            ui.showPostIt('Sua conta foi excluída com sucesso.', 'success');
             // OBRIGATÓRIO: Limpar o token e forçar o logout após a exclusão
             setTimeout(() => {
                 logout(); 
@@ -31,7 +31,9 @@ const ExclusaoConta = () => {
 
         } catch (error) {
             console.error('Erro ao excluir conta:', error.response?.data);
-            setMessage(error.response?.data?.error || 'Falha ao excluir. Verifique se o servidor está rodando.');
+            const errMsg = error.response?.data?.error || 'Falha ao excluir. Verifique se o servidor está rodando.';
+            ui.showPostIt(errMsg, 'error');
+            setMessage(errMsg);
         } finally {
             setLoading(false);
         }

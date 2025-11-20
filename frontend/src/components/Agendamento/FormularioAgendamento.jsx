@@ -1,6 +1,7 @@
 // src/components/Agendamento/FormularioAgendamento.jsx (CÓDIGO FINAL DE CRIAÇÃO)
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
+import { useUi } from '../../contexts/UiContext';
 
 const FormularioAgendamento = ({ onAgendamentoAdicionado }) => {
   
@@ -44,6 +45,8 @@ const FormularioAgendamento = ({ onAgendamentoAdicionado }) => {
     setFormData({ ...formData, [name]: value });
   };
 
+  const ui = useUi();
+
   // Lida com o envio do agendamento (POST)
   const handleSubmit = async (e) => {
     e.preventDefault(); 
@@ -60,17 +63,17 @@ const FormularioAgendamento = ({ onAgendamentoAdicionado }) => {
 
     try {
       await api.post('/agendamentos', dadosParaEnviar);
-      alert('Agendamento criado com sucesso!');
+      ui.showPostIt('Agendamento criado com sucesso!', 'success');
       
       // Limpa o formulário e atualiza a lista
       setFormData({ cliente_id: '', barbeiro_id: '', data_hora: '', servico: '' });
-      if (onAgendamentoAdicionado) {
+        if (onAgendamentoAdicionado) {
           onAgendamentoAdicionado();
-      }
+        }
 
     } catch (error) {
       console.error('Erro ao criar agendamento:', error.response ? error.response.data : error.message);
-      alert('Erro ao criar agendamento. Verifique o console.');
+        ui.showPostIt('Erro ao criar agendamento. Verifique o console.', 'error');
     }
   };
 

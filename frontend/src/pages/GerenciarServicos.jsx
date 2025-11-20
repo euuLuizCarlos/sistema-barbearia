@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { FaPlusCircle, FaEdit, FaTrashAlt, FaSave, FaTimesCircle, FaClipboardList } from 'react-icons/fa';
+import { useUi } from '../contexts/UiContext';
 
 const GerenciarServicos = () => {
     const [servicos, setServicos] = useState([]);
@@ -105,10 +106,11 @@ const GerenciarServicos = () => {
         }
     };
 
+    const ui = useUi();
+
     const handleDelete = async (id) => {
-        if (!window.confirm("Tem certeza que deseja DELETAR este serviço?")) {
-            return;
-        }
+        const ok = await ui.confirm('Tem certeza que deseja DELETAR este serviço?');
+        if (!ok) return;
 
         setMessage('Deletando serviço...');
         setApiError('');
@@ -116,10 +118,12 @@ const GerenciarServicos = () => {
             // Rota DELETE
             const response = await api.delete(`/servicos/${id}`);
             setMessage(response.data.message);
+            ui.showPostIt('Serviço deletado com sucesso.', 'success');
             fetchServicos();
         } catch (error) {
             const errorMsg = error.response?.data?.error || 'Erro ao deletar o serviço.';
             setApiError(errorMsg);
+            ui.showPostIt('Erro ao deletar o serviço.', 'error');
             console.error('Erro ao deletar:', error);
         }
     };

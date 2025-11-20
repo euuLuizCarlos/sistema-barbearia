@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext'; 
+import { useUi } from '../../contexts/UiContext';
 
 const FormularioMovimentacao = ({ 
     onMovimentacaoAdicionada, 
@@ -9,7 +10,8 @@ const FormularioMovimentacao = ({
     onCancelEdit 
 }) => {
   
-  const { user } = useAuth();
+  const { user } = useAuth();
+  const ui = useUi();
   const loggedInBarbeiroId = user ? user.userId : 0;
 
   // 🚨 CORREÇÃO 1: Definir o estado inicial como uma função acessível
@@ -50,10 +52,10 @@ const FormularioMovimentacao = ({
   const handleSubmit = async (e) => {
     e.preventDefault(); 
     
-    if (!user) {
-        alert('Erro: Usuário não logado. Faça o login novamente.');
-        return;
-    }
+  if (!user) {
+    ui.showPostIt('Erro: Usuário não logado. Faça o login novamente.', 'error');
+    return;
+  }
 
     const dadosParaEnviar = {
         ...formData,
@@ -64,15 +66,15 @@ const FormularioMovimentacao = ({
     try {
         const isEditing = !!movimentacaoData;
         
-        if (isEditing) {
+      if (isEditing) {
             // Requisição PUT se estiver editando
             await api.put(`/movimentacoes/${movimentacaoData.id}`, dadosParaEnviar);
-            alert('Movimentação atualizada com sucesso!');
+        ui.showPostIt('Movimentação atualizada com sucesso!', 'success');
             onCancelEdit(); // Volta o formulário para o modo Criação
         } else {
             // Requisição POST se estiver criando
-            await api.post('/movimentacoes', dadosParaEnviar);
-            alert('Movimentação adicionada com sucesso!');
+                await api.post('/movimentacoes', dadosParaEnviar);
+                ui.showPostIt('Movimentação adicionada com sucesso!', 'success');
             
             // 🚨 CORREÇÃO: Usar a função getInitialState para resetar
             setFormData(getInitialState(loggedInBarbeiroId));
@@ -81,10 +83,10 @@ const FormularioMovimentacao = ({
         // 🚨 AÇÃO CHAVE: Força a recarga da lista e totais no componente pai
         onMovimentacaoAdicionada();
         
-    } catch (error) {
-      console.error('Erro:', error.response ? error.response.data : error.message);
-      alert(`Erro ao salvar movimentação. Status: ${error.response ? error.response.status : 'Network Error'}`);
-    }
+      } catch (error) {
+      console.error('Erro:', error.response ? error.response.data : error.message);
+      ui.showPostIt(`Erro ao salvar movimentação. Status: ${error.response ? error.response.status : 'Network Error'}`, 'error');
+    }
   };
 
   return (

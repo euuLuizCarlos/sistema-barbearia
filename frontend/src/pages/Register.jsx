@@ -60,119 +60,322 @@ const Register = () => {
         return <Navigate to="/escolha-perfil" replace />; 
     }
 
-    const [registrationStep, setRegistrationStep] = useState(1);
-    const [tempUserId, setTempUserId] = useState(null);
-    const [chaveAcesso, setChaveAcesso] = useState('');
-    const [message, setMessage] = useState('');
-    const [formData, setFormData] = useState({
-        nome: '', email: '', password: '', tipo_usuario: userType, 
-    });
+    const [message, setMessage] = useState('');
+    const [documentoExists, setDocumentoExists] = useState(false);
+    const [documentoChecking, setDocumentoChecking] = useState(false);
+    const [documentoError, setDocumentoError] = useState('');
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [formData, setFormData] = useState({
+        nome: '', email: '', password: '', tipo_usuario: userType,
+        // Campos do perfil do barbeiro
+        nome_barbearia: '', documento: '', telefone: '', cep: '', rua: '', numero: '', bairro: '', complemento: '', uf: '', localidade: '',
+        foto_perfil: null
+    });
 
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
-    };
+    const handleChange = (e) => {
+        const { name, value, files } = e.target;
+        if (files && files.length > 0) {
+            const file = files[0];
+            setFormData({ ...formData, [name]: file });
+            // cria preview
+            try {
+                if (previewUrl) URL.revokeObjectURL(previewUrl);
+            } catch (e) {}
+            const url = URL.createObjectURL(file);
+            setPreviewUrl(url);
+        } else {
+            // Aplica máscaras em tempo real para alguns campos
+            if (name === 'cep') {
+                setFormData({ ...formData, [name]: maskCep(value) });
+                return;
+            }
+            if (name === 'telefone') {
+                setFormData({ ...formData, [name]: maskTelefone(value) });
+                return;
+            }
+            if (name === 'documento') {
+                setFormData({ ...formData, [name]: maskCpfCnpj(value) });
+                return;
+            }
+            setFormData({ ...formData, [name]: value });
+        }
+    };
+
+    // Máscaras simples para CEP / CPF-CNPJ / Telefone
+    const maskCep = (value) => {
+        if (!value) return '';
+        const v = String(value).replace(/\D/g, '').substring(0, 8);
+        return v.replace(/^(.{5})(.*)$/, (m, p1, p2) => p1 + (p2 ? '-' + p2 : ''));
+    };
+
+    const maskTelefone = (value) => {
+        if (!value) return '';
+        const v = String(value).replace(/\D/g, '').substring(0, 11);
+        if (v.length <= 10) {
+            // (99) 9999-9999
+            return v.replace(/^(\d{2})(\d{0,4})(\d{0,4})$/, (m, g1, g2, g3) => {
+                let out = '';
+                if (g1) out = `(${g1})`;
+                if (g2) out += ` ${g2}`;
+                if (g3) out += `-${g3}`;
+                return out.replace(/-$/, '');
+            });
+        }
+        // (99) 99999-9999
+        return v.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+    };
+
+    const maskCpfCnpj = (value) => {
+        if (!value) return '';
+        const v = String(value).replace(/\D/g, '').substring(0, 14);
+        if (v.length <= 11) {
+            // CPF: 000.000.000-00
+            return v
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        }
+        // CNPJ: 00.000.000/0000-00
+        return v
+            .replace(/(\d{2})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1/$2')
+            .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+    };
+
+    // CEP autocomplete via ViaCEP
+    const handleCepBlur = async (e) => {
+        const raw = (e.target.value || '').replace(/\D/g, '');
+        if (!raw || raw.length !== 8) return;
+        try {
+            const resp = await fetch(`https://viacep.com.br/ws/${raw}/json/`);
+            const data = await resp.json();
+            if (!data || data.erro) return;
+            setFormData(f => ({
+                ...f,
+                rua: data.logradouro || f.rua,
+                bairro: data.bairro || f.bairro,
+                localidade: data.localidade || f.localidade,
+                uf: data.uf || f.uf,
+                cep: raw
+            }));
+        } catch (err) {
+            console.warn('Falha ao consultar CEP:', err);
+        }
+    };
+
+    // Validação CPF/CNPJ (algoritmos)
+    const isValidCPF = (cpf) => {
+        if (!cpf) return false;
+        const s = String(cpf).replace(/\D/g, '');
+        if (s.length !== 11) return false;
+        if (/^(\d)\1+$/.test(s)) return false;
+        let sum = 0;
+        for (let i = 0; i < 9; i++) sum += parseInt(s.charAt(i)) * (10 - i);
+        let rev = 11 - (sum % 11);
+        if (rev === 10 || rev === 11) rev = 0;
+        if (rev !== parseInt(s.charAt(9))) return false;
+        sum = 0;
+        for (let i = 0; i < 10; i++) sum += parseInt(s.charAt(i)) * (11 - i);
+        rev = 11 - (sum % 11);
+        if (rev === 10 || rev === 11) rev = 0;
+        return rev === parseInt(s.charAt(10));
+    };
+
+    const isValidCNPJ = (cnpj) => {
+        if (!cnpj) return false;
+        const s = String(cnpj).replace(/\D/g, '');
+        if (s.length !== 14) return false;
+        if (/^(\d)\1+$/.test(s)) return false;
+        const calc = (t) => {
+            let sum = 0;
+            let pos = t - 7;
+            for (let i = t; i >= 1; i--) {
+                sum += parseInt(s.charAt(t - i)) * pos--;
+                if (pos < 2) pos = 9;
+            }
+            const res = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+            return res;
+        };
+        const digit1 = calc(12);
+        const digit2 = (() => {
+            const temp = s.substring(0, 12) + digit1;
+            let sum = 0; let pos = 2;
+            for (let i = temp.length - 1; i >= 0; i--) {
+                sum += parseInt(temp.charAt(i)) * pos;
+                pos = pos === 9 ? 2 : pos + 1;
+            }
+            return sum % 11 < 2 ? 0 : 11 - (sum % 11);
+        })();
+        return digit1 === parseInt(s.charAt(12)) && digit2 === parseInt(s.charAt(13));
+    };
+
+    const isValidDocumento = (doc) => {
+        if (!doc) return false;
+        const cleaned = String(doc).replace(/\D/g, '');
+        if (cleaned.length === 11) return isValidCPF(cleaned);
+        if (cleaned.length === 14) return isValidCNPJ(cleaned);
+        return false;
+    };
+
+    // Checa no backend se o documento já existe
+    const handleDocumentoBlur = async (e) => {
+        const value = e.target.value || '';
+        setDocumentoError('');
+        setDocumentoExists(false);
+
+        const cleaned = value.replace(/\D/g, '');
+        if (!cleaned) return;
+        if (!isValidDocumento(cleaned)) {
+            setDocumentoError('Documento inválido. CPF/CNPJ com dígitos incorretos.');
+            return;
+        }
+
+        setDocumentoChecking(true);
+        try {
+            const resp = await api.get(`/perfil/documento-exists?documento=${cleaned}`);
+            if (resp.data && resp.data.exists) {
+                setDocumentoExists(true);
+                setDocumentoError('Este CPF/CNPJ já está cadastrado.');
+            } else {
+                setDocumentoExists(false);
+            }
+        } catch (err) {
+            console.warn('Erro ao checar documento:', err);
+            setDocumentoError('Não foi possível validar o documento agora.');
+        } finally {
+            setDocumentoChecking(false);
+        }
+    };
 
     // --- FUNÇÃO 1: CRIA O USUÁRIO (ETAPA 1) ---
-    const handleInitialRegister = async (e) => {
-    e.preventDefault();
-    setMessage('Cadastrando usuário...');
-    
-    try {
-        let response;
-        
-        // 1. LÓGICA CHAVE: Cliente usa ROTA DEDICADA; Barbeiro usa ROTA ANTIGA.
-        if (userType === 'cliente') {
-            // Cliente usa a nova rota (sem campos de ativação)
-            const dadosCliente = { nome: formData.nome, email: formData.email, password: formData.password, telefone: formData.telefone }; // Adicione 'telefone' se for usá-lo
-            response = await api.post('/auth/register/cliente', dadosCliente); // <--- ROTA CORRETA
-        } else {
-            // Barbeiro/Admin usa a rota antiga (que espera ativação)
-            response = await api.post('/auth/register', formData);
-        }
-        
-        const userId = response.data.userId;
+    const handleInitialRegister = async (e) => {
+        e.preventDefault();
+        setMessage('Cadastrando usuário...');
+        // Validações cliente-side adicionais
+        if (userType === 'barbeiro') {
+            // campos obrigatórios
+            const required = ['nome', 'email', 'password', 'nome_barbearia', 'documento', 'telefone', 'cep', 'rua', 'numero', 'bairro', 'uf', 'localidade'];
+            for (const key of required) {
+                if (!formData[key] || String(formData[key]).trim() === '') {
+                    setMessage('Preencha todos os campos obrigatórios do perfil da barbearia.');
+                    return;
+                }
+            }
 
-        // 2. REDIRECIONAMENTO FINAL
-        if (userType === 'cliente') {
-            setMessage('Cadastro de Cliente concluído! Redirecionando para o Login...');
+            if (!isValidDocumento(formData.documento)) {
+                setMessage('CPF/CNPJ inválido. Verifique os dígitos.');
+                return;
+            }
+
+            if (documentoExists) {
+                setMessage('CPF/CNPJ já cadastrado. Use outro ou recupere acesso.');
+                return;
+            }
+        }
+
+        try {
+            let response;
+
+            if (userType === 'cliente') {
+                const dadosCliente = { nome: formData.nome, email: formData.email, password: formData.password, telefone: formData.telefone };
+                response = await api.post('/auth/register/cliente', dadosCliente);
+            } else {
+                // Barbeiro: monta FormData para suportar upload de foto
+                const fd = new FormData();
+                fd.append('nome', formData.nome);
+                fd.append('email', formData.email);
+                fd.append('password', formData.password);
+                fd.append('tipo_usuario', formData.tipo_usuario);
+
+                // Campos do perfil (envia apenas dígitos para documento/cep/telefone)
+                const cleanedDocumento = (formData.documento || '').replace(/\D/g, '');
+                const cleanedCep = (formData.cep || '').replace(/\D/g, '');
+                const cleanedTelefone = (formData.telefone || '').replace(/\D/g, '');
+
+                fd.append('nome_barbearia', formData.nome_barbearia || '');
+                fd.append('documento', cleanedDocumento);
+                fd.append('telefone', cleanedTelefone);
+                fd.append('cep', cleanedCep);
+                fd.append('rua', formData.rua || '');
+                fd.append('numero', formData.numero || '');
+                fd.append('bairro', formData.bairro || '');
+                fd.append('complemento', formData.complemento || '');
+                fd.append('uf', formData.uf || '');
+                fd.append('localidade', formData.localidade || '');
+
+                if (formData.foto_perfil) {
+                    fd.append('foto_perfil', formData.foto_perfil);
+                }
+
+                response = await api.post('/auth/register', fd);
+            }
+
+            // Após registro (cliente ou barbeiro) redireciona para Login — backend já ativa barbeiros
+            setMessage(userType === 'cliente' ? 'Cadastro de Cliente concluído! Redirecionando para o Login...' : 'Conta criada! Redirecionando para o Login...');
             setTimeout(() => navigate('/login'), 2000);
-        } else {
-            // Fluxo de Barbeiro: Vai para a ativação
-            setTempUserId(userId); 
-            navigate(`/ativacao?userId=${userId}`);
-            setMessage('Conta criada. Insira a chave de licença.');
+            // Se o registro foi feito e havia preview, libera o objeto URL
+            if (previewUrl) {
+                try { URL.revokeObjectURL(previewUrl); } catch (e) {}
+                setPreviewUrl(null);
+            }
+
+        } catch (error) {
+            const errorMessage = error.response?.data?.error || 'Erro no cadastro. Verifique a conexão.';
+            setMessage(errorMessage);
         }
-
-    } catch (error) {
-            const errorMessage = error.response?.data?.error || 'Erro no cadastro. Verifique a conexão.';
-            setMessage(errorMessage);
-        }
-    };
+    };
     
-    // --- FUNÇÃO 2: ATIVAÇÃO DE CONTA (ETAPA 2 - APENAS BARBEIRO) ---
-    const handleActivation = async (e) => {
-        e.preventDefault();
-        setMessage('Verificando chave de acesso...');
-        
-        try {
-            const response = await api.post('/auth/ativar-conta', { 
-                userId: tempUserId,
-                chaveAcesso: chaveAcesso 
-            });
-
-            setMessage(response.data.message + ' Redirecionando para o Login...');
-            setTimeout(() => {
-                navigate('/login');
-            }, 2000);
-
-        } catch (error) {
-            const errorMessage = error.response?.data?.error || 'Chave incorreta. Tente novamente.';
-            setMessage(errorMessage);
-        }
-    };
-    
-    
-    // --- INTERFACES DE RENDERIZAÇÃO ---
-    
-    // Interface do formulário de Chave de Acesso (ETAPA 2)
-    const renderActivationForm = () => (
-        <form onSubmit={handleActivation} style={{ marginTop: '30px' }} key="form-step-2">
-            <h2 style={{ color: '#FFB703', marginBottom: '10px' }}>Ativar Conta Barbeiro</h2>
-            <p style={{ color: '#ccc', fontSize: '0.9em', marginBottom: '20px' }}>Insira a chave de licença mestre para concluir o cadastro. Chave: BAR-BER-APLI-MASTER-ADIMIN25</p>
-            
-            <input 
-                type="text" 
-                value={chaveAcesso} 
-                onChange={(e) => setChaveAcesso(e.target.value)} 
-                placeholder="CHAVE-DE-ACESSO-MESTRA"
-                required
-                style={inputBaseStyle}
-            />
-            
-            <button type="submit" style={buttonStyle}>
-                Ativar & Concluir
-            </button>
-            <p style={{ marginTop: '15px', color: '#ff9999' }}>A chave é: BAR-BER-APLI-MASTER-ADIMIN25</p>
-        </form>
-    );
+    // --- INTERFACES DE RENDERIZAÇÃO ---
+    
 
     // Interface do formulário de Registro (ETAPA 1)
-    const renderRegistrationForm = () => (
-        <form onSubmit={handleInitialRegister} style={{ marginTop: '30px' }} key="form-step-1">
-            <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Registro como {userType.toUpperCase()}</h2>
-            <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Crie sua conta {userType} agora.</p>
+    const renderRegistrationForm = () => (
+        <form onSubmit={handleInitialRegister} style={{ marginTop: '30px' }} key="form-step-1" encType="multipart/form-data">
+            <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Registro como {userType.toUpperCase()}</h2>
+            <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Crie sua conta {userType} agora.</p>
 
-            <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
-            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required style={inputBaseStyle} />
-            <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required style={{ ...inputBaseStyle, marginBottom: '20px' }} />
-            
-            <button type="submit" style={{ ...buttonStyle, fontSize: '1.1em', padding: '12px 10px' }}>
-                {userType === 'cliente' ? 'Finalizar Cadastro' : 'Próxima Etapa (Chave)'}
-            </button>
-        </form>
-    );
+            <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
+            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required style={inputBaseStyle} />
+            <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required style={{ ...inputBaseStyle, marginBottom: '20px' }} />
+
+            {userType === 'barbeiro' && (
+                <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
+                    <h3 style={{ marginTop: 0, color: '#023047' }}>Dados da Barbearia</h3>
+                    <input type="text" name="nome_barbearia" value={formData.nome_barbearia} onChange={handleChange} placeholder="Nome da Barbearia" required style={inputBaseStyle} />
+                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF/CNPJ" required style={inputBaseStyle} />
+                    {documentoChecking && <p style={{ margin: '6px 0', color: '#666' }}>Validando documento...</p>}
+                    {documentoError && <p style={{ margin: '6px 0', color: '#ffdddd', background: '#a00', padding: '6px', borderRadius: '4px' }}>{documentoError}</p>}
+                    <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" required style={inputBaseStyle} />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input type="text" name="cep" value={formData.cep} onChange={handleChange} onBlur={handleCepBlur} placeholder="CEP" required style={{ ...inputBaseStyle, flex: '1 1 150px' }} />
+                        <input type="text" name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" required style={{ ...inputBaseStyle, flex: '1 1 120px' }} />
+                    </div>
+                    <input type="text" name="rua" value={formData.rua} onChange={handleChange} placeholder="Rua" required style={inputBaseStyle} />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" required style={{ ...inputBaseStyle, flex: '1' }} />
+                        <input type="text" name="localidade" value={formData.localidade} onChange={handleChange} placeholder="Cidade" required style={{ ...inputBaseStyle, flex: '1' }} />
+                        <input type="text" name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" required style={{ width: '80px', padding: '12px' }} />
+                    </div>
+                    <input type="text" name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (opcional)" style={inputBaseStyle} />
+
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>Foto da Barbearia (opcional)</label>
+                    <input type="file" name="foto_perfil" accept="image/*" onChange={handleChange} style={{ marginBottom: '10px' }} />
+                    {previewUrl && (
+                        <div style={{ marginTop: '10px' }}>
+                            <p style={{ margin: 0, fontSize: '0.9em', color: '#333' }}>Pré-visualização da foto selecionada:</p>
+                            <img src={previewUrl} alt="preview" style={{ marginTop: '8px', maxWidth: '120px', maxHeight: '120px', borderRadius: '6px', border: '1px solid #ccc' }} />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <button type="submit" style={{ ...buttonStyle, fontSize: '1.1em', padding: '12px 10px' }}>
+                {userType === 'cliente' ? 'Finalizar Cadastro' : 'Criar Conta e Preencher Perfil'}
+            </button>
+        </form>
+    );
     
 
     return (
@@ -186,8 +389,8 @@ const Register = () => {
                     <img src={barberLogo} alt="BarberApp Logo" style={{ width: '90%', height: 'auto', margin: '0 0 15px 0' }} />
                 </div>
 
-                {/* Renderiza a Etapa 2 ou a Etapa 1 */}
-                {registrationStep === 2 ? renderActivationForm() : renderRegistrationForm()}
+                {/* Formulário de Registro */}
+                {renderRegistrationForm()}
                 
                 {/* Mensagens de Status */}
                 {message && (

@@ -24,6 +24,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { path: '/horarios', name: 'Meus Horários', icon: FaClock, isBottom: false },
         { path: '/relatorio', name: 'Relatórios', icon: FaChartLine, isBottom: false },
         { path: '/agenda', name: 'Agenda (Barbeiro)', icon: FaCalendarAlt, isBottom: false },
+        { path: '/configuracoes', name: 'Configurações', icon: FaCog, isBottom: false },
     ];
     
     // 3. Itens Exclusivos/Específicos do Cliente

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api'; 
 import axios from 'axios'; 
 import { useAuth } from '../contexts/AuthContext'; // <--- CORREÇÃO: AGORA É SOMENTE UM NÍVEL ACIMA
+import { useUi } from '../contexts/UiContext';
 import { FaSave, FaTimesCircle, FaUserCog, FaHome, FaUserCircle } from 'react-icons/fa'; 
 
 // --- FUNÇÕES DE MÁSCARA, VALIDAÇÃO E UFS ---
@@ -69,6 +70,7 @@ const getInitialFormData = (user) => ({
 const CadastroPerfil = () => {
     const navigate = useNavigate();
     const { user } = useAuth(); 
+    const ui = useUi();
     
     // Inicializa o estado com o objeto completo e os dados do usuário assim que carregado
     const [formData, setFormData] = useState(getInitialFormData(user)); 
@@ -151,7 +153,7 @@ const CadastroPerfil = () => {
     
     const handleUploadFoto = async () => {
         if (!fotoFile) {
-            alert('Por favor, selecione uma foto antes de fazer o upload.');
+            ui.showPostIt('Por favor, selecione uma foto antes de fazer o upload.', 'error');
             return;
         }
 

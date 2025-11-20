@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api'; 
 import { useAuth } from '../contexts/AuthContext';
+import { useUi } from '../contexts/UiContext';
 import { FaChevronLeft, FaCalendarAlt, FaClock, FaUserCircle, FaCheckCircle, FaSpinner } from 'react-icons/fa';
 
 // Importar DatePicker e CSS
@@ -40,6 +41,7 @@ const SelecionarHorario = () => {
     const { barbeiroId, servicoId } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const ui = useUi();
     
     // --- ESTADOS DE SELEÇÃO E DADOS ---
     const [profissionais, setProfissionais] = useState([]);
@@ -137,7 +139,7 @@ const SelecionarHorario = () => {
     // --- 3. AÇÃO DE AGENDAMENTO (ABRE O MODAL) ---
     const handleAgendar = async (horaSelecionada) => {
         if (!selectedBarbeiro || !selectedDate || !clienteId || !servicoInfo) {
-            alert("Erro: Seleção incompleta.");
+            ui.showPostIt('Erro: Seleção incompleta.', 'error');
             return;
         }
 
@@ -171,12 +173,12 @@ const SelecionarHorario = () => {
                 preferencia: adicionais.preferencia // "Conversar" / "Não Conversar"
             });
             
-            alert(response.data.message || `Agendamento confirmado para ${horaSelecionada}!`);
+            ui.showPostIt(response.data.message || `Agendamento confirmado para ${horaSelecionada}!`, 'success');
             navigate('/meus-agendamentos'); 
 
         } catch (err) {
             const msg = err.response?.data?.error || 'Erro ao agendar. Verifique o console.';
-            alert(`Falha no agendamento: ${msg}`);
+            ui.showPostIt(`Falha no agendamento: ${msg}`, 'error');
             console.error(err);
         }
     };
