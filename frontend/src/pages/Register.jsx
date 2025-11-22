@@ -5,6 +5,7 @@ import api from '../services/api';
 // Importe o logo
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png';
 import EscolhaTipoUsuario from '../components/Auth/EscolhaTipoUsuario'; 
+import ShowPasswordToggle from '../components/ShowPasswordToggle';
 
 const Register = () => {
     const navigate = useNavigate();
@@ -61,10 +62,13 @@ const Register = () => {
     }
 
     const [message, setMessage] = useState('');
+    const [emailError, setEmailError] = useState('');
+    const [passwordError, setPasswordError] = useState('');
     const [documentoExists, setDocumentoExists] = useState(false);
     const [documentoChecking, setDocumentoChecking] = useState(false);
     const [documentoError, setDocumentoError] = useState('');
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         nome: '', email: '', password: '', tipo_usuario: userType,
         // Campos do perfil do barbeiro
@@ -75,6 +79,10 @@ const Register = () => {
 
     const handleChange = (e) => {
         const { name, value, files } = e.target;
+        // limpa erros específicos ao editar campos relacionados
+        if (name === 'email' && emailError) setEmailError('');
+        if (name === 'password' && passwordError) setPasswordError('');
+        if (name === 'documento' && documentoError) setDocumentoError('');
         if (files && files.length > 0) {
             const file = files[0];
             setFormData({ ...formData, [name]: file });
@@ -249,10 +257,46 @@ const Register = () => {
         }
     };
 
+    // Checa no backend se o email já existe
+    const handleEmailBlur = async (e) => {
+        const value = (e.target.value || '').trim();
+        if (!value) return;
+        // só checa se o formato é gmail válido (para não gerar requests desnecessários)
+        const gmailRegex = /^[^\s@]+@gmail\.com$/i;
+        if (!gmailRegex.test(value)) return;
+
+        try {
+            const resp = await api.get(`/perfil/email-exists?email=${encodeURIComponent(value)}`);
+            if (resp.data && resp.data.exists) {
+                setEmailError('Este email já está cadastrado.');
+            }
+        } catch (err) {
+            console.warn('Erro ao checar email:', err);
+        }
+    };
+
     // --- FUNÇÃO 1: CRIA O USUÁRIO (ETAPA 1) ---
     const handleInitialRegister = async (e) => {
         e.preventDefault();
         setMessage('Cadastrando usuário...');
+        setEmailError('');
+        setPasswordError('');
+        setDocumentoError('');
+        // Validações simples no frontend: email e senha
+        const email = (formData.email || '').trim();
+        const password = formData.password || '';
+        // Aceita apenas emails do Gmail
+        const gmailRegex = /^[^\s@]+@gmail\.com$/i;
+        if (!gmailRegex.test(email)) {
+            setEmailError('Somente endereços @gmail.com são aceitos.');
+            setMessage('Corrija os erros no formulário.');
+            return;
+        }
+        if (password.length < 8) {
+            setPasswordError('A senha deve ter no mínimo 8 caracteres.');
+            setMessage('Corrija os erros no formulário.');
+            return;
+        }
         // Validações cliente-side adicionais
         if (userType === 'barbeiro') {
             // campos obrigatórios
@@ -334,8 +378,21 @@ const Register = () => {
             }
 
         } catch (error) {
-            const errorMessage = error.response?.data?.error || 'Erro no cadastro. Verifique a conexão.';
-            setMessage(errorMessage);
+            const respErrors = error.response?.data?.errors;
+            if (respErrors && typeof respErrors === 'object') {
+                if (respErrors.email) setEmailError(respErrors.email);
+                if (respErrors.password) setPasswordError(respErrors.password);
+                if (respErrors.documento) setDocumentoError(respErrors.documento);
+                // mensagem geral
+                if (respErrors.general) setMessage(respErrors.general);
+                else {
+                    const first = respErrors.email || respErrors.password || respErrors.documento || respErrors.nome || respErrors.general;
+                    if (first) setMessage(first);
+                }
+            } else {
+                const errorMessage = error.response?.data?.error || 'Erro no cadastro. Verifique a conexão.';
+                setMessage(errorMessage);
+            }
         }
     };
     
@@ -349,8 +406,21 @@ const Register = () => {
             <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Crie sua conta {userType} agora.</p>
 
             <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
-            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required style={inputBaseStyle} />
-            <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required style={{ ...inputBaseStyle, marginBottom: '20px' }} />
+            <input type="email" name="email" value={formData.email} onChange={handleChange} onBlur={handleEmailBlur} placeholder="Email" required style={inputBaseStyle} />
+            {emailError && <p style={{ margin: '6px 0', color: '#fff', background: '#c62828', padding: '6px', borderRadius: '4px' }}>{emailError}</p>}
+            <div style={{ position: 'relative', marginBottom: '20px' }}>
+                <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Senha"
+                    required
+                    style={{ ...inputBaseStyle, paddingRight: '40px', marginBottom: '0' }}
+                />
+                <ShowPasswordToggle show={showPassword} onToggle={() => setShowPassword(s => !s)} ariaLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} />
+            </div>
+            {passwordError && <p style={{ margin: '6px 0', color: '#fff', background: '#c62828', padding: '6px', borderRadius: '4px' }}>{passwordError}</p>}
 
             {userType === 'cliente' && (
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>

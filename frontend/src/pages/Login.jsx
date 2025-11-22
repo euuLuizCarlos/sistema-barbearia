@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext'; 
+import ShowPasswordToggle from '../components/ShowPasswordToggle';
 
 // CORREÇÃO FINAL DA IMAGEM: Garante que a extensão .png (ou .jpg se você o renomeou) esteja correta
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png'; 
@@ -13,13 +14,16 @@ const Login = () => {
         email: '',
         password: '',
     });
+    const [showPassword, setShowPassword] = useState(false);
     const [message, setMessage] = useState('');
+    const [showForgotLink, setShowForgotLink] = useState(false);
     const navigate = useNavigate();
     const { login } = useAuth();
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData({ ...formData, [name]: value });
+        if (name === 'password') setShowForgotLink(false);
     };
 
     const handleSubmit = async (e) => {
@@ -53,10 +57,12 @@ const Login = () => {
                     // REDIRECIONAMENTO CORRETO: Manda para a rota de ativação com o ID do usuário
                     navigate(`/ativacao?userId=${pendingUserId}`); 
                  }, 1500);
-            } else {
-                 // Erro normal (senha errada, usuário inexistente, etc.)
-                 setMessage(errorMessage);
-            }
+              } else {
+                  // Erro normal (senha errada, usuário inexistente, etc.)
+                  setMessage(errorMessage);
+                  // Se for erro 401 (credenciais inválidas), mostramos o link "Esqueceu sua senha?"
+                  if (error.response?.status === 401) setShowForgotLink(true);
+              }
         }
     };
 
@@ -107,15 +113,18 @@ const Login = () => {
                         required
                         style={{ width: '100%', padding: '12px 10px', marginBottom: '20px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
                     />
-                    <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        placeholder="Senha"
-                        required
-                        style={{ width: '100%', padding: '12px 10px', marginBottom: '30px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
-                    />
+                    <div style={{ position: 'relative', marginBottom: '30px' }}>
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            name="password"
+                            value={formData.password}
+                            onChange={handleChange}
+                            placeholder="Senha"
+                            required
+                            style={{ width: '100%', padding: '12px 40px 12px 10px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
+                        />
+                        <ShowPasswordToggle show={showPassword} onToggle={() => setShowPassword(s => !s)} ariaLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} />
+                    </div>
                     <button
                         type="submit"
                         style={{ width: '100%', padding: '12px 10px', backgroundColor: '#FFB703', color: '#023047', border: 'none', borderRadius: '5px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer', transition: 'background-color 0.3s ease' }}
@@ -148,6 +157,15 @@ const Login = () => {
                         Não tem conta? Cadastre-se
                     </a>
                 </p>
+                {showForgotLink && (
+                    <p style={{ marginTop: '8px', fontSize: '0.9em' }}>
+                        <a href="/forgot-password" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}
+                            onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                            onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}>
+                            Esqueceu sua senha?
+                        </a>
+                    </p>
+                )}
             </div>
         </div>
     );

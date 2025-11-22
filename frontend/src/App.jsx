@@ -18,6 +18,8 @@ import Configuracoes from './pages/Configuracoes';
 import Login from './pages/Login'; 
 import Register from './pages/Register'; 
 import AtivacaoConta from './pages/AtivacaoConta';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import GerenciarServicos from './pages/GerenciarServicos'; 
 import GerenciarHorarios from './pages/GerenciarHorarios'; // <--- NOVO COMPONENTE
 import VisualizacaoBarbearia from './pages/VisualizacaoBarbearia';
@@ -43,7 +45,7 @@ const Header = ({ toggleSidebar }) => {
     const location = useLocation();
     
     // Lista de rotas que não devem ter o Header
-    const noNavRoutes = ['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro', '/perfil/editar'];
+    const noNavRoutes = ['/login', '/register', '/escolha-perfil', '/ativacao', '/perfil/cadastro', '/perfil/editar', '/forgot-password', '/reset-password'];
     const showHeader = isAuthenticated && !noNavRoutes.includes(location.pathname);
 
     if (!showHeader) return null;
@@ -90,6 +92,8 @@ const AppContent = () => {
                     <Route path="/escolha-perfil" element={<EscolhaTipoUsuario />} />
                     <Route path="/ativacao" element={<AtivacaoConta />} /> 
                     <Route path="/register" element={<Register />} /> 
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                     
                     {/* ROTAS PROTEGIDAS PELO LOGIN (PRIMEIRO NÍVEL) */}
                     <Route element={<PrivateRoute />}>

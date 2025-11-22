@@ -4,6 +4,8 @@ const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
 // 🚨 MÓDULOS DE UPLOAD 🚨
 const multer = require('multer');
@@ -32,6 +34,49 @@ app.use(cors(corsOptions));
 // -------------------------------------------------------------
 
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
+
+// Password reset token settings
+const PASSWORD_RESET_TOKEN_MINUTES = Number(process.env.PASSWORD_RESET_TOKEN_MINUTES || 60);
+
+function generateResetToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+async function sendResetEmail(email, resetLink) {
+    // Em dev: se não houver configuração de SMTP, apenas loga o link
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+        console.log(`Reset link for ${email}: ${resetLink}`);
+        return;
+    }
+
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+        }
+    });
+
+    const html = `
+        <p>Olá,</p>
+        <p>Recebemos uma solicitação para redefinir a senha. Clique no link abaixo (válido por ${PASSWORD_RESET_TOKEN_MINUTES} minutos):</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>Se você não solicitou, ignore este email.</p>
+    `;
+
+    await transporter.sendMail({
+        from: process.env.MAIL_FROM || 'no-reply@seusite.com',
+        to: email,
+        subject: 'Redefinição de senha',
+        html
+    });
+}
 
 // --- Configuração de Upload (Multer) ---
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -161,6 +206,20 @@ const isValidDocumento = (doc) => {
     return false;
 };
 
+// Validação simples de email
+const isValidEmail = (email) => {
+    if (!email) return false;
+    // Regex simples e robusta para validar formato básico de email
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(String(email).toLowerCase());
+};
+
+// Verifica se é email Gmail
+const isGmail = (email) => {
+    if (!email) return false;
+    return /^[^\s@]+@gmail\.com$/i.test(String(email).toLowerCase());
+};
+
 // Função para formatar a data para SQL (YYYY-MM-DD) usando hora local
 const getTodayDate = () => {
     const d = new Date();
@@ -222,26 +281,60 @@ app.post('/auth/register', (req, res) => {
             // Extrai campos do body (quando multipart, o body estará em req.body)
             const { nome, email, password, tipo_usuario, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade } = req.body;
 
-            if (!nome || !email || !password || !tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) {
-                return res.status(400).json({ error: 'Nome, email, senha e tipo de usuário são obrigatórios.' });
+            // Validação por campo -> será retornado { errors: { field: message } }
+            const fieldErrors = {};
+            if (!nome || String(nome).trim() === '') fieldErrors.nome = 'Nome é obrigatório.';
+            if (!email || String(email).trim() === '') fieldErrors.email = 'Email é obrigatório.';
+            else if (!isValidEmail(email)) fieldErrors.email = 'Email inválido.';
+            else if (!isGmail(email)) fieldErrors.email = 'Somente endereços @gmail.com são aceitos.';
+            if (!password || String(password).length < 8) fieldErrors.password = 'Senha muito curta. Use ao menos 8 caracteres.';
+            if (!tipo_usuario || (tipo_usuario !== 'barbeiro' && tipo_usuario !== 'cliente')) fieldErrors.tipo_usuario = 'Tipo de usuário inválido.';
+
+            if (Object.keys(fieldErrors).length > 0) {
+                return res.status(400).json({ errors: fieldErrors });
+            }
+
+            // Verifica se o email já existe em barbeiros OU clientes
+            try {
+                const [emailRows] = await db.query(
+                    `SELECT 'barbeiro' as origem, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as origem, id FROM clientes WHERE email = ?`,
+                    [email, email]
+                );
+                if (emailRows && emailRows.length > 0) {
+                    return res.status(409).json({ errors: { email: 'Email já está em uso.' } });
+                }
+            } catch (emailCheckErr) {
+                console.error('Erro ao verificar email duplicado:', emailCheckErr);
+                return res.status(500).json({ error: 'Erro ao validar email.' });
             }
 
             // Se for barbeiro, valida campos obrigatórios do perfil e verifica duplicidade de documento ANTES de criar o usuário
             if (tipo_usuario === 'barbeiro') {
                 const cleanedDocumento = (documento || '').replace(/\D/g, '');
-                if (!nome_barbearia || !cleanedDocumento || !telefone || !rua || !numero || !bairro || !cep || !uf || !localidade) {
-                    return res.status(400).json({ error: 'Todos os campos do perfil da barbearia são obrigatórios.' });
+                const barberErrors = {};
+                if (!nome_barbearia || String(nome_barbearia).trim() === '') barberErrors.nome_barbearia = 'Nome da barbearia é obrigatório.';
+                if (!cleanedDocumento) barberErrors.documento = 'Documento (CPF/CNPJ) é obrigatório.';
+                if (!telefone) barberErrors.telefone = 'Telefone é obrigatório.';
+                if (!rua) barberErrors.rua = 'Rua é obrigatória.';
+                if (!numero) barberErrors.numero = 'Número é obrigatório.';
+                if (!bairro) barberErrors.bairro = 'Bairro é obrigatório.';
+                if (!cep) barberErrors.cep = 'CEP é obrigatório.';
+                if (!uf) barberErrors.uf = 'UF é obrigatório.';
+                if (!localidade) barberErrors.localidade = 'Localidade (cidade) é obrigatória.';
+
+                if (Object.keys(barberErrors).length > 0) {
+                    return res.status(400).json({ errors: barberErrors });
                 }
 
                 // Valida algoritmo CPF/CNPJ
                 if (!isValidDocumento(cleanedDocumento)) {
-                    return res.status(400).json({ error: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' });
+                    return res.status(400).json({ errors: { documento: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' } });
                 }
 
                 try {
                     const [existing] = await db.query('SELECT barbeiro_id FROM perfil_barbeiro WHERE documento = ?', [cleanedDocumento]);
                     if (existing && existing.length > 0) {
-                        return res.status(409).json({ error: 'Documento (CPF/CNPJ) já cadastrado em outro perfil.' });
+                        return res.status(409).json({ errors: { documento: 'Documento (CPF/CNPJ) já cadastrado em outro perfil.' } });
                     }
                 } catch (checkErr) {
                     console.error('Erro ao verificar documento duplicado:', checkErr);
@@ -279,7 +372,7 @@ app.post('/auth/register', (req, res) => {
                 const cleanedDocumento = (documento || '').replace(/\D/g, '');
                 if (!isValidDocumento(cleanedDocumento)) {
                     // não falha todo o registro do usuário base, mas solicita correção do perfil
-                    return res.status(400).json({ error: 'Documento inválido (CPF/CNPJ com dígitos incorretos).' });
+                    return res.status(400).json({ errors: { documento: 'Documento inválido (CPF/CNPJ com dígitos incorretos).' } });
                 }
                 const finalComplemento = complemento === '' ? null : complemento;
                 const sqlPerfil = `INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -289,9 +382,9 @@ app.post('/auth/register', (req, res) => {
             return res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: userId, userName: nome });
 
         } catch (err) {
-            // Se houver erro de duplicidade, tenta mapear e retornar 409
+            // Se houver erro de duplicidade, tenta mapear e retornar 409 (campo email)
             if (err && err.code === 'ER_DUP_ENTRY') {
-                return res.status(409).json({ error: 'Email já está em uso.' });
+                return res.status(409).json({ errors: { email: 'Email já está em uso.' } });
             }
             console.error('Erro no registro:', err);
             return res.status(500).json({ error: 'Erro interno no servidor.' });
@@ -303,8 +396,29 @@ app.post('/auth/register', (req, res) => {
 app.post('/auth/register/cliente', async (req, res) => {
     const { nome, email, password, telefone, documento } = req.body; // Campos da tabela 'clientes'
     
-    if (!nome || !email || !password) {
-        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
+    const fieldErrors = {};
+    if (!nome || String(nome).trim() === '') fieldErrors.nome = 'Nome é obrigatório.';
+    if (!email || String(email).trim() === '') fieldErrors.email = 'Email é obrigatório.';
+    else if (!isValidEmail(email)) fieldErrors.email = 'Email inválido.';
+    else if (!isGmail(email)) fieldErrors.email = 'Somente endereços @gmail.com são aceitos.';
+    if (!password || String(password).length < 8) fieldErrors.password = 'Senha muito curta. Use ao menos 8 caracteres.';
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return res.status(400).json({ errors: fieldErrors });
+    }
+
+    // Verifica se o email já existe em barbeiros OU clientes
+    try {
+        const [emailRows] = await db.query(
+            `SELECT 'barbeiro' as origem, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as origem, id FROM clientes WHERE email = ?`,
+            [email, email]
+        );
+        if (emailRows && emailRows.length > 0) {
+            return res.status(409).json({ errors: { email: 'Email já está em uso.' } });
+        }
+    } catch (emailCheckErr) {
+        console.error('Erro ao verificar email duplicado (cliente):', emailCheckErr);
+        return res.status(500).json({ error: 'Erro ao validar email.' });
     }
 
     try {
@@ -333,7 +447,7 @@ app.post('/auth/register/cliente', async (req, res) => {
 
     } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ error: 'Email já está em uso.' });
+            return res.status(409).json({ errors: { email: 'Email já está em uso.' } });
         }
         console.error('Erro no registro do cliente:', err);
         res.status(500).json({ error: 'Erro interno no servidor.' });
@@ -1995,5 +2109,197 @@ app.post('/perfil/cliente', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Erro ao atualizar perfil do cliente:', err);
         return res.status(500).json({ error: 'Erro interno ao atualizar perfil.' });
+    }
+});
+
+// Rota: GET /perfil/email-exists?email=...
+// Objetivo: verificar rapidamente se um email já está cadastrado em barbeiros OU clientes
+app.get('/perfil/email-exists', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Parâmetro email é obrigatório.' });
+
+    try {
+        const [rows] = await db.query(
+            `SELECT 'barbeiro' as origem, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as origem, id FROM clientes WHERE email = ?`,
+            [email, email]
+        );
+        return res.json({ exists: rows && rows.length > 0 });
+    } catch (err) {
+        console.error('Erro ao checar email:', err);
+        return res.status(500).json({ error: 'Erro interno ao checar email.' });
+    }
+});
+
+// Rota: POST /auth/forgot-password
+// Recebe { email } e, se existir conta, gera token e envia email com link (resposta genérica sempre)
+app.post('/auth/forgot-password', async (req, res) => {
+    const { email } = req.body || {};
+    const genericResp = { message: 'Se houver conta associada, enviamos um email com instruções.' };
+    if (!email) return res.status(400).json({ error: 'Email é obrigatório.' });
+
+    try {
+        // localiza conta (barbeiro ou cliente)
+        const [rows] = await db.query(
+            `SELECT 'barbeiro' as tipo, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as tipo, id FROM clientes WHERE email = ?`,
+            [email, email]
+        );
+        if (!rows || rows.length === 0) {
+            // não indicar que email não existe
+            return res.json(genericResp);
+        }
+
+        // gera token e salva hash
+        const token = generateResetToken();
+        const tokenHash = hashToken(token);
+        const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_MINUTES * 60 * 1000);
+
+        await db.query('INSERT INTO password_reset_tokens (email, token_hash, expires_at) VALUES (?, ?, ?)', [email, tokenHash, expiresAt]);
+
+        // cria link para frontend
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const resetLink = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+
+        // envia email (ou loga em dev)
+        try {
+            await sendResetEmail(email, resetLink);
+        } catch (mailErr) {
+            console.error('Falha ao enviar email de reset:', mailErr);
+        }
+
+        return res.json(genericResp);
+    } catch (err) {
+        console.error('Erro no forgot-password:', err);
+        return res.json(genericResp);
+    }
+});
+
+// Rota: POST /auth/reset-password
+// Recebe { token, email, newPassword }
+app.post('/auth/reset-password', async (req, res) => {
+    const { token, email, newPassword } = req.body || {};
+    if (!token || !email || !newPassword) return res.status(400).json({ error: 'Dados incompletos.' });
+    if (String(newPassword).length < 8) return res.status(400).json({ error: 'Senha deve ter no mínimo 8 caracteres.' });
+
+    try {
+        const tokenHash = hashToken(token);
+        const [rows] = await db.query('SELECT * FROM password_reset_tokens WHERE email = ? AND token_hash = ? AND used = 0', [email, tokenHash]);
+        const row = rows && rows[0];
+        if (!row) return res.status(400).json({ error: 'Token inválido ou já usado.' });
+        if (new Date(row.expires_at) < new Date()) return res.status(400).json({ error: 'Token expirado.' });
+
+        // localiza usuário por email nas duas tabelas
+        const [userRows] = await db.query(`SELECT 'barbeiro' as tipo, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as tipo, id FROM clientes WHERE email = ?`, [email, email]);
+        if (!userRows || userRows.length === 0) return res.status(400).json({ error: 'Usuário não encontrado.' });
+
+        const user = userRows[0];
+        const hashed = await bcrypt.hash(newPassword, 10);
+        if (user.tipo === 'barbeiro') {
+            await db.query('UPDATE barbeiros SET password_hash = ? WHERE id = ?', [hashed, user.id]);
+        } else {
+            await db.query('UPDATE clientes SET password_hash = ? WHERE id = ?', [hashed, user.id]);
+        }
+
+        // marca token como usado
+        await db.query('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [row.id]);
+
+        return res.json({ message: 'Senha alterada com sucesso.' });
+    } catch (err) {
+        console.error('Erro no reset-password:', err);
+        return res.status(500).json({ error: 'Erro interno.' });
+    }
+});
+
+// Rota: POST /auth/verify-email-document
+// Verifica se o documento (CPF/CNPJ) corresponde ao email fornecido
+app.post('/auth/verify-email-document', async (req, res) => {
+    const { email, documento } = req.body || {};
+    if (!email || !documento) return res.status(400).json({ error: 'Email e documento são obrigatórios.' });
+
+    try {
+        // Busca documento para barbeiro (perfil_barbeiro) ou cliente (clientes.documento)
+        const cleaned = String(documento).replace(/\D/g, '');
+
+        // Primeiro tenta barbeiro + perfil
+        const [barberRows] = await db.query(`
+            SELECT pb.documento, b.id FROM barbeiros b
+            JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
+            WHERE b.email = ?
+        `, [email]);
+
+        if (barberRows && barberRows.length > 0) {
+            const stored = String(barberRows[0].documento || '').replace(/\D/g, '');
+            if (stored && stored === cleaned) {
+                return res.json({ match: true, tipo: 'barbeiro' });
+            }
+            return res.status(400).json({ error: 'Documento não confere.' });
+        }
+
+        // Se não for barbeiro com perfil, tenta cliente
+        const [clientRows] = await db.query('SELECT documento, id FROM clientes WHERE email = ?', [email]);
+        if (clientRows && clientRows.length > 0) {
+            const stored = String(clientRows[0].documento || '').replace(/\D/g, '');
+            if (stored && stored === cleaned) {
+                return res.json({ match: true, tipo: 'cliente' });
+            }
+            return res.status(400).json({ error: 'Documento não confere.' });
+        }
+
+        return res.status(404).json({ error: 'Usuário não encontrado.' });
+    } catch (err) {
+        console.error('Erro em verify-email-document:', err);
+        return res.status(500).json({ error: 'Erro interno.' });
+    }
+});
+
+// Rota: POST /auth/reset-password-with-doc
+// Recebe { email, documento, newPassword } — verifica documento e atualiza senha
+app.post('/auth/reset-password-with-doc', async (req, res) => {
+    const { email, documento, newPassword } = req.body || {};
+    if (!email || !documento || !newPassword) return res.status(400).json({ error: 'Dados incompletos.' });
+    if (String(newPassword).length < 8) return res.status(400).json({ error: 'Senha deve ter no mínimo 8 caracteres.' });
+
+    try {
+        const cleaned = String(documento).replace(/\D/g, '');
+
+        // Tenta barbeiro + perfil
+        const [barberRows] = await db.query(`
+            SELECT pb.documento, b.id FROM barbeiros b
+            JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
+            WHERE b.email = ?
+        `, [email]);
+
+        let userType = null;
+        let userId = null;
+
+        if (barberRows && barberRows.length > 0) {
+            const stored = String(barberRows[0].documento || '').replace(/\D/g, '');
+            if (stored !== cleaned) return res.status(400).json({ error: 'Documento não confere.' });
+            userType = 'barbeiro';
+            userId = barberRows[0].id;
+        } else {
+            // tenta cliente
+            const [clientRows] = await db.query('SELECT documento, id FROM clientes WHERE email = ?', [email]);
+            if (clientRows && clientRows.length > 0) {
+                const stored = String(clientRows[0].documento || '').replace(/\D/g, '');
+                if (stored !== cleaned) return res.status(400).json({ error: 'Documento não confere.' });
+                userType = 'cliente';
+                userId = clientRows[0].id;
+            } else {
+                return res.status(404).json({ error: 'Usuário não encontrado.' });
+            }
+        }
+
+        const hashed = await bcrypt.hash(newPassword, 10);
+        if (userType === 'barbeiro') {
+            await db.query('UPDATE barbeiros SET password_hash = ? WHERE id = ?', [hashed, userId]);
+        } else {
+            await db.query('UPDATE clientes SET password_hash = ? WHERE id = ?', [hashed, userId]);
+        }
+
+        return res.json({ message: 'Senha alterada com sucesso.' });
+
+    } catch (err) {
+        console.error('Erro em reset-password-with-doc:', err);
+        return res.status(500).json({ error: 'Erro interno.' });
     }
 });
