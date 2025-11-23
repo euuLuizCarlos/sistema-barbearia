@@ -2013,8 +2013,9 @@ app.delete('/blocked-dates/:id', authenticateToken, async (req, res) => {
 // server.js (Nova Rota: POST /comanda/fechar - SEM COMISSÃO)
 
 app.post('/comanda/fechar', authenticateToken, async (req, res) => {
-    // Dados de entrada do Frontend (NÃO PRECISA MAIS DE comissao_percentual)
-    const { agendamento_id, valor_cobrado, forma_pagamento } = req.body;
+    // Adicionando os novos campos à desestruturação
+    const { agendamento_id, valor_cobrado, forma_pagamento, 
+            avaliacao_cliente_nota, avaliacao_cliente_obs } = req.body; 
     const barbeiro_id = req.user.id; 
 
     if (!agendamento_id || valor_cobrado === undefined || !forma_pagamento) {
@@ -2067,8 +2068,24 @@ app.post('/comanda/fechar', authenticateToken, async (req, res) => {
         }
         
         // 4. ATUALIZAR STATUS DO AGENDAMENTO PARA 'concluido'
-        const sqlUpdateAgendamento = 'UPDATE agendamentos SET status = ?, valor_servico = ? WHERE id = ? AND barbeiro_id = ?';
-        await connection.query(sqlUpdateAgendamento, ['concluido', valorCobrado, agendamento_id, barbeiro_id]);
+        const sqlUpdateAgendamento = `
+            UPDATE agendamentos 
+            SET 
+                status = ?, 
+                valor_servico = ?,
+                avaliacao_cliente_nota = ?,  
+                avaliacao_cliente_obs = ?    
+            WHERE id = ? AND barbeiro_id = ?
+        `;
+
+        await connection.query(sqlUpdateAgendamento, [
+            'concluido', 
+            valorCobrado, 
+            avaliacao_cliente_nota, 
+            avaliacao_cliente_obs || null, 
+            agendamento_id, 
+            barbeiro_id
+        ]);
 
         // Fim da transação: Confirma todas as operações
         await connection.commit();
