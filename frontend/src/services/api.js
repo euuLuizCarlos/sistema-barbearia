@@ -5,6 +5,7 @@ const api = axios.create({
 });
 
 // 🚨 NOVO INTERCEPTOR PARA TRATAMENTO DE UPLOAD (Content-Type) 🚨
+// src/services/api.jsx
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('userToken');
 

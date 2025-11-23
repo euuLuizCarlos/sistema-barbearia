@@ -1776,32 +1776,46 @@ app.get('/barbearia/:barbeiroPrincipalId/profissionais', async (req, res) => {
 
 // Rota: GET /agendamento/:barbeiroId/disponibilidade/:data/:servicoId
 // Objetivo: Retorna a lista de horários de início disponíveis para aquele serviço e data.
+// server.js (Substitua a rota existente)
+
 app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req, res) => {
     const { barbeiroId, data: dataString, servicoId } = req.params;
 
-    // Determina o dia da semana (ex: 'segunda', 'terca')
-    const date = new Date(dataString + 'T00:00:00'); // Adiciona T00 para evitar fuso horário local
-    const diaSemanaIndex = date.getDay(); // 0=Dom, 1=Seg...
+    // Determina o dia da semana (para checar horarios_atendimento)
+    const date = new Date(dataString + 'T00:00:00'); 
+    const diaSemanaIndex = date.getDay(); 
     const dias = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
     const dia_semana = dias[diaSemanaIndex];
 
     try {
-        // 1. Busca a Duração do Serviço
+        // 1. 🚨 CHECAGEM CRÍTICA: VERIFICA SE A DATA ESTÁ BLOQUEADA 🚨
+        const sqlBloqueio = 'SELECT reason FROM blocked_dates WHERE barbeiro_id = ? AND date = ?';
+        const [bloqueio] = await db.query(sqlBloqueio, [barbeiroId, dataString]); // dataString é 'YYYY-MM-DD'
+
+        if (bloqueio.length > 0) {
+            // Se a data estiver bloqueada, retorna imediatamente com uma mensagem
+            return res.json({ 
+                disponiveis: [], 
+                message: `Data bloqueada devido a: ${bloqueio[0].reason || 'Dia de folga/Feriado'}.`
+            });
+        }
+        
+        // 2. Busca a Duração do Serviço (necessário para calcular slots)
         const [servicoRows] = await db.query('SELECT duracao_minutos FROM servicos WHERE id = ?', [servicoId]);
         if (servicoRows.length === 0) {
             return res.status(404).json({ error: "Serviço não encontrado." });
         }
         const duracao_minutos = servicoRows[0].duracao_minutos;
 
-        // 2. Busca o Horário de Atendimento (Regra)
+        // 3. Busca o Horário de Atendimento (Regra)
         const sqlHorario = 'SELECT hora_inicio, hora_fim FROM horarios_atendimento WHERE barbeiro_id = ? AND dia_semana = ?';
         const [horariosTrabalho] = await db.query(sqlHorario, [barbeiroId, dia_semana]);
 
         if (horariosTrabalho.length === 0) {
-            return res.json({ disponiveis: [], message: "O profissional não trabalha neste dia." });
+            return res.json({ disponiveis: [], message: `O profissional não trabalha na ${dia_semana}.` });
         }
 
-        // 3. Busca os Agendamentos Existentes (Conflitos)
+        // 4. Busca os Agendamentos Existentes (Conflitos)
         const dataInicio = `${dataString} 00:00:00`;
         const dataFim = `${dataString} 23:59:59`;
         const sqlConflitos = `
@@ -1812,7 +1826,7 @@ app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req,
         `;
         const [agendamentosOcupados] = await db.query(sqlConflitos, [barbeiroId, dataInicio, dataFim]);
         
-        // 4. LÓGICA DE GERAÇÃO DE SLOTS (A SER FEITA EM JAVASCRIPT/NODE)
+        // 5. LÓGICA DE GERAÇÃO DE SLOTS (Mantida do seu código original)
         const slotsDisponiveis = [];
 
         for (const horario of horariosTrabalho) {
@@ -1823,35 +1837,29 @@ app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req,
                 const slotEnd = new Date(currentTime.getTime() + duracao_minutos * 60000);
                 let isAvailable = true;
 
-                // Verifica conflito com agendamentos existentes
                 for (const agendamento of agendamentosOcupados) {
                     const bookedStart = new Date(agendamento.data_hora_inicio);
                     const bookedEnd = new Date(agendamento.data_hora_fim);
 
-                    // Conflito: O novo slot começa antes do fim do agendamento E termina depois do início do agendamento
                     if (
                         currentTime.getTime() < bookedEnd.getTime() && 
                         slotEnd.getTime() > bookedStart.getTime()
                     ) {
                         isAvailable = false;
-                        // Pula o tempo até o fim do agendamento para continuar a busca
                         currentTime = bookedEnd; 
                         break;
                     }
                 }
 
                 if (isAvailable) {
-                    // Adiciona o slot formatado (HH:MM)
                     slotsDisponiveis.push(
                         currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                     );
-                    // Avança para o próximo slot
                     currentTime = new Date(currentTime.getTime() + duracao_minutos * 60000);
                 }
             }
         }
 
-        // Retorna a lista de horários
         return res.json({ disponiveis: slotsDisponiveis, message: "Horários calculados com sucesso." });
 
     } catch (error) {
@@ -1939,6 +1947,64 @@ app.get('/agendamentos/data', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error("Erro ao pesquisar agendamentos por data:", error);
         return res.status(500).json({ error: "Erro interno ao buscar agendamentos pela data." });
+    }
+});
+
+
+// Exemplo de rota de POST para o Backend (A ser adicionada no Server.js)
+
+// Rota POST /blocked-dates
+// server.js (Rotas para Gerenciar Dias Bloqueados)
+
+// Rota POST: Adiciona um dia bloqueado
+app.post('/blocked-dates', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { date, reason } = req.body; // date deve ser YYYY-MM-DD
+
+    if (!date) {
+        return res.status(400).json({ error: "A data é obrigatória." });
+    }
+
+    try {
+        const sql = 'INSERT INTO blocked_dates (barbeiro_id, date, reason) VALUES (?, ?, ?)';
+        const [result] = await db.query(sql, [barbeiro_id, date, reason || null]);
+        
+        return res.status(201).json({ message: "Dia bloqueado com sucesso!", id: result.insertId });
+
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+             return res.status(409).json({ error: "Esta data já está bloqueada." });
+        }
+        console.error("Erro ao bloquear data:", error);
+        return res.status(500).json({ error: "Erro interno ao bloquear data." });
+    }
+});
+
+// Rota GET: Lista dias bloqueados do barbeiro
+app.get('/blocked-dates/meus', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    try {
+        const [dias] = await db.query('SELECT id, date, reason, created_at FROM blocked_dates WHERE barbeiro_id = ? ORDER BY date ASC', [barbeiro_id]);
+        return res.json(dias);
+    } catch (error) {
+        console.error("Erro ao listar dias bloqueados:", error);
+        return res.status(500).json({ error: "Erro interno ao listar dias bloqueados." });
+    }
+});
+
+// Rota DELETE: Remove um dia bloqueado
+app.delete('/blocked-dates/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const barbeiro_id = req.user.id;
+    try {
+        const [result] = await db.query('DELETE FROM blocked_dates WHERE id = ? AND barbeiro_id = ?', [id, barbeiro_id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Dia bloqueado não encontrado ou acesso negado." });
+        }
+        return res.json({ message: "Dia bloqueado removido com sucesso." });
+    } catch (error) {
+        console.error("Erro ao deletar dia bloqueado:", error);
+        return res.status(500).json({ error: "Erro interno ao deletar dia bloqueado." });
     }
 });
 
