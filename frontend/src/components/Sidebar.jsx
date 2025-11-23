@@ -30,7 +30,6 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     // 3. Itens Exclusivos/Específicos do Cliente
     const clientItems = [
         // Usamos o Perfil como o 'Menu' geral para o Cliente
-        { path: userProfilePath, name: 'Menu / Perfil', icon: FaAlignJustify, isBottom: false }, 
 
         { path: '/meus-agendamentos', name: 'Meus Agendamentos', icon: FaCalendarAlt, isBottom: false },
     ];
@@ -41,9 +40,13 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
     if (isClient) {
         menuItems = [...menuItems, ...clientItems];
+        
+        // 💡 MOVENDO O PERFIL DO CLIENTE PARA O RODAPÉ 💡
+        bottomLink = { path: userProfilePath, name: 'Meu Perfil', icon: FaUserAlt }; 
     } else {
         menuItems = [...menuItems, ...barberItems];
-        // Barbeiro tem o link de Perfil separado no rodapé da Sidebar
+        
+        // O Barbeiro também tem o link de Perfil separado no rodapé
         bottomLink = { path: userProfilePath, name: 'Meu Perfil', icon: FaUserAlt };
     }
     
