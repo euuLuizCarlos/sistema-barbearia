@@ -1667,6 +1667,8 @@ app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(50
 
 // Rota: GET /barbearias/busca?query=TERRA
 // Funcionalidade: Busca barbearias ativas por nome, barbearia ou localidade
+// server.js (Modifique a rota GET /barbearias/busca)
+
 app.get('/barbearias/busca', async (req, res) => {
     // O parâmetro 'query' é opcional para filtrar por nome/local
     const { query } = req.query; 
@@ -1677,12 +1679,18 @@ app.get('/barbearias/busca', async (req, res) => {
                 b.id AS barbeiro_id, 
                 pb.nome_barbearia,
                 pb.rua,
-                pb.numero,
-                pb.bairro,
                 pb.localidade,
                 pb.uf,
                 b.foto_perfil,
-                b.nome AS nome_barbeiro
+                b.nome AS nome_barbeiro,
+                
+                -- 🚨 NOVO CÁLCULO: MÉDIA DE AVALIAÇÕES DO BARBEIRO 🚨
+                (
+                    SELECT ROUND(AVG(nota), 1)
+                    FROM avaliacoes_barbeiros 
+                    WHERE barbeiro_id = b.id
+                ) AS media_avaliacao_barbeiro
+                
             FROM barbeiros b
             JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
             WHERE b.status_ativacao = 'ativa' 
@@ -1699,20 +1707,20 @@ app.get('/barbearias/busca', async (req, res) => {
         
         sql += ` ORDER BY pb.nome_barbearia ASC`;
 
-        // Assumindo que 'db' é o seu pool de conexão MySQL
         const [barbearias] = await db.query(sql, params);
 
-        // Processa os dados para adicionar a URL completa da foto
+        // Processa os dados para adicionar a URL completa da foto e a nota
         const barbeariasFormatadas = barbearias.map(barbearia => ({
             ...barbearia,
-            // Construção da URL da foto, assumindo que o Node.js serve arquivos estáticos
-            foto_url: barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null
+            foto_url: barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null,
+            // Garante que a média seja 0.0 se for null (sem avaliações)
+            media_avaliacao_barbeiro: barbearia.media_avaliacao_barbeiro || '0.0'
         }));
 
         return res.json(barbeariasFormatadas);
 
     } catch (error) {
-        console.error("Erro ao buscar barbearias:", error);
+        console.error("Erro ao buscar barbearias (com avaliação):", error);
         return res.status(500).json({ error: "Erro interno ao buscar barbearias." });
     }
 });
@@ -1940,16 +1948,23 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
             SELECT 
                 a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
                 b.nome AS nome_barbeiro, 
-                s.nome AS nome_servico
+                s.nome AS nome_servico,
+                
+                -- 🚨 NOVO: Checa se a avaliação do barbeiro existe para este agendamento 🚨
+                av.nota AS nota_barbeiro_cliente
+                
             FROM agendamentos a
             JOIN barbeiros b ON a.barbeiro_id = b.id
             JOIN servicos s ON a.servico_id = s.id
+            
+            -- LEFT JOIN para verificar se o cliente já avaliou
+            LEFT JOIN avaliacoes_barbeiros av ON av.agendamento_id = a.id
+            
             WHERE a.cliente_id = ?
             ORDER BY a.data_hora_inicio DESC
         `;
         
         const [agendamentos] = await db.query(sql, [clienteId]);
-
         return res.json(agendamentos);
 
     } catch (error) {
@@ -2445,5 +2460,50 @@ app.post('/auth/reset-password-with-doc', async (req, res) => {
     } catch (err) {
         console.error('Erro em reset-password-with-doc:', err);
         return res.status(500).json({ error: 'Erro interno.' });
+    }
+});
+
+// server.js (ADICIONAR NOVA ROTA)
+
+app.post('/avaliar-barbeiro', authenticateToken, async (req, res) => {
+    const cliente_id = req.user.id;
+    const { agendamento_id, nota, observacao } = req.body;
+
+    if (!agendamento_id || !nota || nota < 1 || nota > 5) {
+        return res.status(400).json({ error: "ID do agendamento e nota (1-5) são obrigatórios." });
+    }
+
+    try {
+        // 1. Verificar se o agendamento pertence ao cliente e foi concluído
+        const sqlCheck = 'SELECT barbeiro_id FROM agendamentos WHERE id = ? AND cliente_id = ? AND status = "concluido"';
+        const [agendamentoRows] = await db.query(sqlCheck, [agendamento_id, cliente_id]);
+
+        if (agendamentoRows.length === 0) {
+            return res.status(404).json({ error: "Agendamento não encontrado ou não está concluído para avaliação." });
+        }
+        
+        const barbeiro_id = agendamentoRows[0].barbeiro_id;
+
+        // 2. Inserir a avaliação na nova tabela
+        const sqlInsert = `
+            INSERT INTO avaliacoes_barbeiros (agendamento_id, barbeiro_id, cliente_id, nota, observacao)
+            VALUES (?, ?, ?, ?, ?)
+        `;
+        await db.query(sqlInsert, [
+            agendamento_id,
+            barbeiro_id,
+            cliente_id,
+            nota,
+            observacao || null
+        ]);
+
+        return res.status(201).json({ message: "Avaliação do Barbeiro registrada com sucesso!" });
+
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+             return res.status(409).json({ error: "Você já avaliou este agendamento." });
+        }
+        console.error("Erro ao avaliar barbeiro:", error);
+        return res.status(500).json({ error: "Erro interno ao registrar avaliação." });
     }
 });

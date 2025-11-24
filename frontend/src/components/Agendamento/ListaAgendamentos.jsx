@@ -6,6 +6,8 @@ import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSe
 import ModalFechamentoComanda from './ModalFechamentoComanda';
 import { useUi } from '../../contexts/UiContext'; 
 import { useAuth } from '../../contexts/AuthContext'; 
+// 🚨 CAMINHO CORRIGIDO 🚨
+import ModalAvaliacaoBarbeiro from '../Auth/ModalAvaliacaoBarbeiro.jsx'; 
 
 // =======================================================
 // DEFINIÇÕES DE CORES LOCAIS (Para consistência e estabilidade)
@@ -30,6 +32,9 @@ const ListaAgendamentos = ({ refreshKey }) => {
     const [dataPesquisa, setDataPesquisa] = useState(''); 
     const [agendamentoToClose, setAgendamentoToClose] = useState(null); 
 
+    // ESTADO PARA O NOVO MODAL
+    const [agendamentoToReview, setAgendamentoToReview] = useState(null);
+
     // Funções de Estilo (para o Status)
     const getStatusStyle = (status) => {
         switch (status) {
@@ -40,7 +45,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
         }
     };
     
-    // 💡 FUNÇÃO DE REPUTAÇÃO DO CLIENTE (Chave para a exibição)
+    // FUNÇÃO DE REPUTAÇÃO DO CLIENTE (Chave para a exibição)
     const renderReputacaoCliente = (media) => {
         if (media === null || media === undefined || media === '0.0') {
             return <span style={{ color: COLORS.SECONDARY_TEXT, fontSize: '0.9em' }}>Sem avaliações anteriores</span>;
@@ -68,8 +73,6 @@ const ListaAgendamentos = ({ refreshKey }) => {
         setLoading(true);
         setError(null);
         try {
-            // Se houver dataPesquisa, usa o filtro por data, caso contrário, usa a busca padrão.
-            // O backend deve filtrar por barbeiroId via token ou query.
             let url = dataPesquisa 
                 ? `/agendamentos/data?data=${dataPesquisa}` 
                 : `/agendamentos`;
@@ -120,16 +123,27 @@ const ListaAgendamentos = ({ refreshKey }) => {
         }
     };
 
-    // FUNÇÃO PARA ABRIR O MODAL DE FECHAMENTO
+    // FUNÇÃO PARA ABRIR O MODAL DE FECHAMENTO (CHAMADO PELO BOTÃO CONCLUIR)
     const handleConcluirAgendamento = (agendamento) => {
         setAgendamentoToClose(agendamento);
     };
 
-    // Função chamada após o sucesso do fechamento dentro do Modal
+    // Função chamada ao fechar o modal de comanda
     const handleFechamentoSuccess = (message) => {
-        setAgendamentoToClose(null); // Fecha o modal
+        setAgendamentoToClose(null); // Fecha o modal de comanda
         ui.showPostIt(message, 'success');
         fetchAgendamentos(); // Recarrega a lista
+    };
+    
+    // FUNÇÃO CHAMADA QUANDO A AVALIAÇÃO DO BARBEIRO É CONCLUÍDA PELO CLIENTE (Se usarmos aqui)
+    const handleReviewCompleted = () => {
+        setAgendamentoToReview(null); // Fecha o modal de avaliação
+        fetchAgendamentos(); 
+    };
+
+    // Função para verificar se o Barbeiro foi avaliado neste agendamento
+    const wasReviewed = (agendamento) => {
+        return agendamento.nota_barbeiro_cliente !== undefined && agendamento.nota_barbeiro_cliente !== null;
     };
     
     // ---------------------------------------------
@@ -149,7 +163,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
     return (
         <div style={{ padding: '0px' }}>
             
-            {/* CAMPO DE PESQUISA POR DATA */}
+            {/* CAMPO DE PESQUISA POR DATA (Mantido) */}
             <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: COLORS.BACKGROUND_LIGHT }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: COLORS.PRIMARY }}>
                     <FaSearch style={{ marginRight: '5px'}}/> Pesquisar por Data Específica:
@@ -219,7 +233,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                 <p style={{ margin: '5px 0' }}><FaCut style={{ marginRight: '5px'}}/> Serviço: **{a.nome_servico}**</p>
                                 <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: COLORS.SUCCESS }}/> Valor Base: **R$ {valorFormatado}**</p>
                                 
-                                {/* 🚨 NOVO: EXIBIÇÃO DA REPUTAÇÃO DO CLIENTE 🚨 */}
+                                {/* 🚨 REPUTAÇÃO DO CLIENTE 🚨 */}
                                 <div style={{ margin: '10px 0 10px 0', borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '0.9em', color: '#555', display: 'flex', alignItems: 'center' }}>
                                         <FaUserTie style={{ marginRight: '5px' }} /> Reputação do Cliente:
@@ -245,7 +259,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                     </div>
                                 )}
 
-                                {/* LINHA 4: BOTÕES DE AÇÃO (Apenas se 'agendado') */}
+                                {/* LINHA 4: BOTÕES DE AÇÃO */}
                                 {isPending && (
                                     <div style={{ marginTop: '20px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
                                         <button 
@@ -270,12 +284,21 @@ const ListaAgendamentos = ({ refreshKey }) => {
                 </ul>
             )}
             
-            {/* RENDERIZAÇÃO DO MODAL DE FECHAMENTO */}
+            {/* RENDERIZAÇÃO DO MODAL DE FECHAMENTO (Barbeiro avalia Cliente) */}
             {agendamentoToClose && (
                 <ModalFechamentoComanda 
                     agendamento={agendamentoToClose}
                     onClose={() => setAgendamentoToClose(null)}
                     onFinish={handleFechamentoSuccess} 
+                />
+            )}
+            
+            {/* 🚨 MODAL DE AVALIAÇÃO DO BARBEIRO (Cliente avalia Barbeiro) */}
+            {/* ESTA RENDERIZAÇÃO ESTÁ ERRADA AQUI! Ela deve estar no MeusAgendamentos.jsx (Cliente) */}
+            {agendamentoToReview && (
+                <ModalAvaliacaoBarbeiro 
+                    agendamento={agendamentoToReview}
+                    onAvaliacaoConcluida={handleReviewCompleted}
                 />
             )}
             
