@@ -2,48 +2,88 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api'; 
-import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSearch } from 'react-icons/fa';
+import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSearch, FaStar, FaUserTie } from 'react-icons/fa';
 import ModalFechamentoComanda from './ModalFechamentoComanda';
 import { useUi } from '../../contexts/UiContext'; 
+import { useAuth } from '../../contexts/AuthContext'; 
+
+// =======================================================
+// DEFINIÇÕES DE CORES LOCAIS (Para consistência e estabilidade)
+// =======================================================
+const COLORS = {
+    PRIMARY: '#023047',
+    ACCENT: '#FFB703',
+    SUCCESS: '#4CAF50',
+    ERROR: '#cc0000',
+    SECONDARY_TEXT: '#888888',
+};
+
 
 const ListaAgendamentos = ({ refreshKey }) => {
+    const { user } = useAuth();
+    const barbeiroId = user?.userId;
+
     const [agendamentos, setAgendamentos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // Estado para a Pesquisa por Data
     const [dataPesquisa, setDataPesquisa] = useState(''); 
-    
-    // Estado para o Modal de Fechamento de Comanda
     const [agendamentoToClose, setAgendamentoToClose] = useState(null); 
 
     // Funções de Estilo (para o Status)
     const getStatusStyle = (status) => {
         switch (status) {
-            case 'concluido': return { color: 'white', backgroundColor: 'green', label: 'CONCLUÍDO' };
-            case 'cancelado': return { color: 'white', backgroundColor: 'red', label: 'CANCELADO' };
+            case 'concluido': return { color: 'white', backgroundColor: COLORS.SUCCESS, label: 'CONCLUÍDO' };
+            case 'cancelado': return { color: 'white', backgroundColor: COLORS.ERROR, label: 'CANCELADO' };
             case 'agendado': 
-            default: return { color: 'black', backgroundColor: '#FFB703', label: 'AGENDADO' };
+            default: return { color: 'black', backgroundColor: COLORS.ACCENT, label: 'AGENDADO' };
         }
     };
     
-    // Função para buscar os agendamentos (Modificada para usar dataPesquisa)
+    // 💡 FUNÇÃO DE REPUTAÇÃO DO CLIENTE (Chave para a exibição)
+    const renderReputacaoCliente = (media) => {
+        if (media === null || media === undefined || media === '0.0') {
+            return <span style={{ color: COLORS.SECONDARY_TEXT, fontSize: '0.9em' }}>Sem avaliações anteriores</span>;
+        }
+        
+        const rating = parseFloat(media);
+        
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', fontSize: '1em', fontWeight: 'bold', color: COLORS.PRIMARY }}>
+                <FaStar size={14} style={{ color: COLORS.ACCENT, marginRight: '5px' }} />
+                {rating.toFixed(1)} / 5.0
+            </div>
+        );
+    };
+
+
+    // Função para buscar os agendamentos (Integrando a busca por data)
     const fetchAgendamentos = useCallback(async () => {
+        if (!barbeiroId) {
+             setError("ID do Barbeiro não encontrado. Faça login novamente.");
+             setLoading(false);
+             return;
+        }
+
         setLoading(true);
         setError(null);
         try {
-            // Define a URL baseada na presença do filtro de data
-            let url = dataPesquisa ? `/agendamentos/data?data=${dataPesquisa}` : '/agendamentos';
+            // Se houver dataPesquisa, usa o filtro por data, caso contrário, usa a busca padrão.
+            // O backend deve filtrar por barbeiroId via token ou query.
+            let url = dataPesquisa 
+                ? `/agendamentos/data?data=${dataPesquisa}` 
+                : `/agendamentos`;
             
             const response = await api.get(url); 
             setAgendamentos(response.data);
+            
         } catch (error) {
             console.error("Erro ao buscar agendamentos:", error);
             setError(error.response?.data?.error || 'Erro ao carregar a agenda. Verifique o backend.');
         } finally {
             setLoading(false);
         }
-    }, [dataPesquisa]); // Dispara a busca quando a data muda
+    }, [dataPesquisa, refreshKey, barbeiroId]); 
 
     useEffect(() => {
         fetchAgendamentos();
@@ -101,7 +141,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
     }
     
     if (error) {
-        return <h2 style={{ color: 'red', padding: '20px' }}>Erro: {error}</h2>;
+        return <h2 style={{ color: COLORS.ERROR, padding: '20px' }}>Erro: {error}</h2>;
     }
 
     const valorTotalAgendamentos = agendamentos.reduce((acc, a) => acc + parseFloat(a.valor_servico || 0), 0);
@@ -110,9 +150,9 @@ const ListaAgendamentos = ({ refreshKey }) => {
         <div style={{ padding: '0px' }}>
             
             {/* CAMPO DE PESQUISA POR DATA */}
-            <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                    <FaSearch style={{ marginRight: '5px' }}/> Pesquisar por Data Específica:
+            <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: COLORS.BACKGROUND_LIGHT }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: COLORS.PRIMARY }}>
+                    <FaSearch style={{ marginRight: '5px'}}/> Pesquisar por Data Específica:
                 </label>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                     <input
@@ -124,20 +164,20 @@ const ListaAgendamentos = ({ refreshKey }) => {
                     <button
                         onClick={() => setDataPesquisa('')} 
                         disabled={!dataPesquisa}
-                        style={{ padding: '10px 15px', backgroundColor: '#ccc', color: '#333', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                        style={{ padding: '10px 15px', backgroundColor: COLORS.SECONDARY_TEXT, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
                     >
                         Limpar Filtro
                     </button>
                 </div>
                 {dataPesquisa && (
-                    <p style={{ marginTop: '10px', color: '#023047', fontWeight: 'bold' }}>
+                    <p style={{ marginTop: '10px', color: COLORS.PRIMARY, fontWeight: 'bold' }}>
                         * Exibindo agendamentos para {dataPesquisa}.
                     </p>
                 )}
             </div>
             
             <h2 style={{ color: '#555', marginBottom: '10px' }}>
-                {dataPesquisa ? 'Agendamentos Encontrados' : 'Próximos Agendamentos Futuros'}
+                {dataPesquisa ? 'Agendamentos Encontrados' : 'Próximos Agendamentos'}
             </h2>
             <p style={{ marginBottom: '20px', fontWeight: 'bold' }}>
                 Total de Agendamentos: {agendamentos.length} | 
@@ -148,7 +188,6 @@ const ListaAgendamentos = ({ refreshKey }) => {
                 <p style={{ marginTop: '20px', fontSize: '1.2em' }}>Nenhum agendamento encontrado para o filtro atual.</p>
             ) : (
                 <ul style={{ listStyleType: 'none', padding: 0 }}>
-                    {/** Ordena: primeiro agendados (pendentes) por data/hora ascendente, depois os demais também por data/hora ascendente */}
                     {([...(agendamentos || [])].sort((x, y) => {
                         const px = x.status === 'agendado' ? 0 : 1;
                         const py = y.status === 'agendado' ? 0 : 1;
@@ -166,36 +205,35 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                 
                                 {/* LINHA 1: HORÁRIO E STATUS */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #eee', paddingBottom: '10px', marginBottom: '10px' }}>
-                                    <h3 style={{ margin: 0, color: '#023047', display: 'flex', alignItems: 'center' }}>
+                                    <h3 style={{ margin: 0, color: COLORS.PRIMARY, display: 'flex', alignItems: 'center' }}>
                                         <FaClock style={{ marginRight: '8px' }} />
                                         {dataInicio.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} | {dataInicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {dataFim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                     </h3>
-                                    <span style={{ ...statusInfo, padding: '5px 10px', fontWeight: 'bold' }}>
+                                    <span style={{ ...statusInfo, padding: '5px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
                                         {statusInfo.label}
                                     </span>
                                 </div>
 
                                 {/* LINHA 2: DETALHES PRINCIPAIS */}
-                                <p style={{ margin: '5px 0' }}><FaUser style={{ marginRight: '5px' }}/> Cliente: **{a.nome_cliente}**</p>
-                                <p style={{ margin: '5px 0' }}><FaCut style={{ marginRight: '5px' }}/> Serviço: **{a.nome_servico}**</p>
-                                <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: 'green' }}/> Valor Base: **R$ {valorFormatado}**</p>
+                                <p style={{ margin: '5px 0' }}><FaUser style={{ marginRight: '5px'}}/> Cliente: **{a.nome_cliente}**</p>
+                                <p style={{ margin: '5px 0' }}><FaCut style={{ marginRight: '5px'}}/> Serviço: **{a.nome_servico}**</p>
+                                <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: COLORS.SUCCESS }}/> Valor Base: **R$ {valorFormatado}**</p>
                                 
-                                {/* NOVIDADE: EXIBIÇÃO DO MOTIVO DE CANCELAMENTO */}
+                                {/* 🚨 NOVO: EXIBIÇÃO DA REPUTAÇÃO DO CLIENTE 🚨 */}
+                                <div style={{ margin: '10px 0 10px 0', borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.9em', color: '#555', display: 'flex', alignItems: 'center' }}>
+                                        <FaUserTie style={{ marginRight: '5px' }} /> Reputação do Cliente:
+                                    </span>
+                                    {renderReputacaoCliente(a.media_avaliacao_cliente)}
+                                </div>
+
+                                {/* EXIBIÇÃO DO MOTIVO DE CANCELAMENTO */}
                                 {a.status === 'cancelado' && a.motivo_cancelamento && (
                                     <p style={{ 
-                                        margin: '10px 0 0 0', 
-                                        color: 'darkred', 
-                                        fontStyle: 'italic', 
-                                        fontSize: '0.9em', 
-                                        borderLeft: '3px solid red', 
-                                        paddingLeft: '10px' 
+                                        margin: '10px 0 0 0', color: COLORS.ERROR, fontStyle: 'italic', 
+                                        borderLeft: `3px solid ${COLORS.ERROR}`, paddingLeft: '10px' 
                                     }}>
-                                        Motivo: {a.motivo_cancelamento}
-                                    </p>
-                                )}
-                                {a.status === 'cancelado' && a.cancelado_por && (
-                                    <p style={{ margin: '6px 0 0 0', fontSize: '0.9em', color: '#a00' }}>
-                                        Cancelado por: <strong>{a.cancelado_por === 'barbeiro' ? 'Barbeiro' : a.cancelado_por === 'cliente' ? 'Cliente' : a.cancelado_por}</strong>
+                                        Motivo: {a.motivo_cancelamento} (Cancelado por: **{a.cancelado_por}**)
                                     </p>
                                 )}
                                 
@@ -208,18 +246,18 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                 )}
 
                                 {/* LINHA 4: BOTÕES DE AÇÃO (Apenas se 'agendado') */}
-                                {a.status === 'agendado' && (
+                                {isPending && (
                                     <div style={{ marginTop: '20px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
                                         <button 
                                             onClick={() => handleConcluirAgendamento(a)}
-                                            style={{ padding: '10px 20px', backgroundColor: 'green', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', marginRight: '10px' }}
+                                            style={{ padding: '10px 20px', backgroundColor: COLORS.SUCCESS, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', marginRight: '10px' }}
                                         >
                                             <FaCheck style={{ marginRight: '5px' }} />
-                                            Concluir (Pagamento)
+                                            Concluir (Avaliar & Fechar)
                                         </button>
                                         <button 
                                             onClick={() => handleCancelarAgendamento(a.id)}
-                                            style={{ padding: '10px 20px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                                            style={{ padding: '10px 20px', backgroundColor: COLORS.ERROR, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
                                         >
                                             <FaTimes style={{ marginRight: '5px' }} />
                                             Cancelar

@@ -1464,39 +1464,43 @@ const data_fim_sql = toLocalSQLString(fim);
 // Rota: GET /agendamentos (Lista para o Calendário)
 // server.js (Localize e atualize a rota GET /agendamentos)
 
+// server.js (SUBSTITUIR ROTA: GET /agendamentos)
+
 app.get('/agendamentos', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    
-    // 1. Definição da Data Atual e Data de HOJE (apenas YYYY-MM-DD)
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' '); 
     const today = new Date().toISOString().substring(0, 10);
     
     try {
         const sql = `
             SELECT 
-                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
-                c.nome AS nome_cliente, 
-                s.nome AS nome_servico
-            FROM agendamentos a
-            JOIN clientes c ON a.cliente_id = c.id
-            JOIN servicos s ON a.servico_id = s.id
+                A.id, A.data_hora_inicio, A.data_hora_fim, A.status, A.valor_servico, A.observacao, A.preferencia, A.motivo_cancelamento, A.cancelado_por,
+                C.nome AS nome_cliente, 
+                S.nome AS nome_servico,
+                
+                -- 🚨 CÁLCULO DA REPUTAÇÃO DO CLIENTE 🚨
+                (
+                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
+                    FROM agendamentos
+                    WHERE cliente_id = A.cliente_id
+                      AND avaliacao_cliente_nota IS NOT NULL
+                      AND status = 'concluido' 
+                ) AS media_avaliacao_cliente
+                
+            FROM agendamentos A
+            JOIN clientes C ON A.cliente_id = C.id
+            JOIN servicos S ON A.servico_id = S.id
             
             /* FILTRO DE BASE: A data de início deve ser HOJE ou no FUTURO. */
-            WHERE DATE(a.data_hora_inicio) >= ? 
-            AND a.barbeiro_id = ? 
+            WHERE DATE(A.data_hora_inicio) >= ? 
+            AND A.barbeiro_id = ?
             
-            /* * ORDENAÇÃO DE PRIORIDADE:
-             * 1. HOJE vs. FUTURO: 0 se for HOJE, 1 se for FUTURO. (HOJE VEM PRIMEIRO)
-             * 2. STATUS: 0 se for AGENDADO (Pendente), 1 se for Concluído/Cancelado.
-             * 3. CRONOLOGIA: Hora mais cedo primeiro.
-             */
+            /* ORDENAÇÃO */
             ORDER BY 
-                CASE WHEN DATE(a.data_hora_inicio) = ? THEN 0 ELSE 1 END,
-                CASE WHEN a.status = 'agendado' THEN 0 ELSE 1 END,
-                a.data_hora_inicio ASC
+                CASE WHEN DATE(A.data_hora_inicio) = ? THEN 0 ELSE 1 END,
+                CASE WHEN A.status = 'agendado' THEN 0 ELSE 1 END,
+                A.data_hora_inicio ASC
         `;
         
-        // Passamos 'today' (data YYYY-MM-DD) para o filtro WHERE e para o filtro CASE
         const [agendamentos] = await db.query(sql, [today, barbeiro_id, today]);
 
         return res.json(agendamentos);
@@ -1606,6 +1610,51 @@ app.put('/agendamentos/:id/status', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error(`Erro ao atualizar status do agendamento ${id}:`, error);
         return res.status(500).json({ error: 'Erro interno ao atualizar o agendamento.' });
+    }
+});
+
+// server.js (Modifique a rota que busca a agenda do barbeiro)
+
+app.get('/agenda/:barbeiroId', authenticateToken, async (req, res) => {
+    // 💡 Apenas para barbeiros/admins (ou use req.user.id se for rota /meus)
+    const barbeiroId = req.params.barbeiroId; 
+    
+    // Supondo que você quer agendamentos AGENDADOS ou PENDENTES
+    // Ajuste o filtro de data e status conforme sua necessidade
+    const dataBusca = new Date().toISOString().slice(0, 10); // Ex: Hoje
+
+    try {
+        const sql = `
+    SELECT
+        A.*,
+        C.nome AS nome_cliente,
+        C.email AS email_cliente,
+        S.nome AS nome_servico,
+        S.duracao_minutos,
+                
+                (
+            SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
+            FROM agendamentos
+            WHERE cliente_id = A.cliente_id
+              AND avaliacao_cliente_nota IS NOT NULL
+              AND status = 'concluido' 
+        ) AS media_avaliacao_cliente
+        
+    FROM agendamentos A
+    JOIN clientes C ON A.cliente_id = C.id  /* (Ou tabela users, dependendo do seu schema) */
+    JOIN servicos S ON A.servico_id = S.id
+    WHERE A.barbeiro_id = ?
+      AND A.status IN ('agendado', 'pendente')
+    ORDER BY A.data_hora_inicio ASC
+`;
+        
+        const [agendamentos] = await db.query(sql, [barbeiroId, dataBusca]);
+
+        return res.json(agendamentos);
+
+    } catch (error) {
+        console.error("Erro ao buscar agenda:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agenda." });
     }
 });
 
@@ -1913,31 +1962,43 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
 
 // server.js (Nova Rota: GET /agendamentos/data)
 
+// server.js (Modifique a rota GET /agendamentos/data)
+
+// server.js (Adicionar esta rota ao seu código)
+
+// server.js (ADICIONAR ROTA: GET /agendamentos/data)
+
 app.get('/agendamentos/data', authenticateToken, async (req, res) => {
-    // A data é enviada como parâmetro de query, ex: /agendamentos/data?data=2025-11-15
-    const { data } = req.query; 
-    const barbeiro_id = req.user.id;
-    
+    let barbeiro_id = req.user.id;
+    let { data } = req.query; 
+
+    // Garante que 'data' tem um valor padrão, se não for fornecido.
     if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
-        return res.status(400).json({ error: "O parâmetro 'data' é obrigatório e deve ser YYYY-MM-DD." });
+        data = new Date().toISOString().substring(0, 10); 
     }
 
     try {
         const sql = `
-            SELECT 
-                a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
-                c.nome AS nome_cliente, 
-                s.nome AS nome_servico
-            FROM agendamentos a
-            JOIN clientes c ON a.cliente_id = c.id
-            JOIN servicos s ON a.servico_id = s.id
-            WHERE a.barbeiro_id = ? 
-            AND DATE(a.data_hora_inicio) = ? 
-            
-            /* Priorização: Agendados vêm primeiro, depois ordem cronológica */
-            ORDER BY 
-                CASE WHEN a.status = 'agendado' THEN 0 ELSE 1 END,
-                a.data_hora_inicio ASC
+            SELECT
+                A.id, A.data_hora_inicio, A.data_hora_fim, A.status, A.valor_servico, A.observacao, A.preferencia, A.motivo_cancelamento, A.cancelado_por,
+                C.nome AS nome_cliente,
+                S.nome AS nome_servico,
+                
+                -- 🚨 CÁLCULO DA REPUTAÇÃO DO CLIENTE 🚨
+                (
+                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
+                    FROM agendamentos
+                    WHERE cliente_id = A.cliente_id
+                      AND avaliacao_cliente_nota IS NOT NULL
+                      AND status = 'concluido' 
+                ) AS media_avaliacao_cliente
+                
+            FROM agendamentos A
+            JOIN clientes C ON A.cliente_id = C.id
+            JOIN servicos S ON A.servico_id = S.id
+            WHERE A.barbeiro_id = ?
+              AND DATE(A.data_hora_inicio) = ? 
+            ORDER BY A.status = 'agendado' DESC, A.data_hora_inicio ASC
         `;
         
         const [agendamentos] = await db.query(sql, [barbeiro_id, data]);
@@ -1945,8 +2006,8 @@ app.get('/agendamentos/data', authenticateToken, async (req, res) => {
         return res.json(agendamentos);
 
     } catch (error) {
-        console.error("Erro ao pesquisar agendamentos por data:", error);
-        return res.status(500).json({ error: "Erro interno ao buscar agendamentos pela data." });
+        console.error("ERRO CRÍTICO NA BUSCA DE AGENDA COM REPUTAÇÃO:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agenda com reputação." });
     }
 });
 
