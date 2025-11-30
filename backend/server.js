@@ -1754,6 +1754,8 @@ app.get('/servicos/barbeiro/:barbeiroId', async (req, res) => {
 });
 
 
+// server.js (SUBSTITUIR A ROTA: /barbearia/:barbeiroId/detalhes)
+
 app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
     const { barbeiroId } = req.params;
 
@@ -1765,11 +1767,22 @@ app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
                 pb.rua,
                 pb.numero,
                 pb.bairro,
+                pb.complemento,
                 pb.localidade,
                 pb.uf,
+                -- 🚨 CAMPOS CORRIGIDOS E ADICIONADOS AQUI 🚨
+                pb.telefone, 
+                pb.cep, 
                 b.foto_perfil,
                 b.nome AS nome_barbeiro,
-                b.email
+                
+                -- Cálculo da média de avaliação (Mantido)
+                (
+                    SELECT ROUND(AVG(nota), 1)
+                    FROM avaliacoes_barbeiros 
+                    WHERE barbeiro_id = b.id
+                ) AS media_avaliacao_barbeiro
+                
             FROM barbeiros b
             JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
             WHERE b.id = ? 
@@ -1786,6 +1799,9 @@ app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
         // Adiciona a URL completa da foto para o Frontend
         barbearia.foto_url = barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null;
 
+        // Garante que os campos de reputação (se nulos) e endereço sejam formatados antes de enviar
+        barbearia.media_avaliacao_barbeiro = barbearia.media_avaliacao_barbeiro || '0.0';
+        
         return res.json(barbearia);
 
     } catch (error) {
@@ -2505,5 +2521,85 @@ app.post('/avaliar-barbeiro', authenticateToken, async (req, res) => {
         }
         console.error("Erro ao avaliar barbeiro:", error);
         return res.status(500).json({ error: "Erro interno ao registrar avaliação." });
+    }
+});
+
+// server.js (ADICIONAR NOVA ROTA)
+
+app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
+    const { barbeiroId } = req.params;
+
+    try {
+        const sql = `
+            SELECT 
+                av.nota, 
+                av.observacao, 
+                av.data_avaliacao,
+                c.nome AS nome_cliente,
+                s.nome AS nome_servico
+            FROM avaliacoes_barbeiros av
+            JOIN clientes c ON av.cliente_id = c.id
+            JOIN agendamentos a ON av.agendamento_id = a.id
+            JOIN servicos s ON a.servico_id = s.id
+            WHERE av.barbeiro_id = ?
+            ORDER BY av.data_avaliacao DESC
+        `;
+        
+        const [avaliacoes] = await db.query(sql, [barbeiroId]);
+        
+        // Também calculamos a média geral para o cabeçalho, caso o frontend precise
+        const sqlMedia = `
+            SELECT ROUND(AVG(nota), 1) AS media_geral, COUNT(id) AS total_avaliacoes
+            FROM avaliacoes_barbeiros
+            WHERE barbeiro_id = ?
+        `;
+        const [media] = await db.query(sqlMedia, [barbeiroId]);
+        
+        return res.json({
+            mediaGeral: media[0].media_geral || '0.0',
+            totalAvaliacoes: media[0].total_avaliacoes,
+            comentarios: avaliacoes
+        });
+
+    } catch (error) {
+        console.error("Erro ao buscar avaliações do barbeiro:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar avaliações." });
+    }
+});
+
+
+
+// server.js (ADICIONAR NOVA ROTA: GET /agendamentos/ultimo)
+
+app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
+    const cliente_id = req.user.id;
+    
+    try {
+        const sql = `
+            SELECT 
+                A.data_hora_inicio AS data_agendamento,
+                S.nome AS servico_nome,
+                PB.nome_barbearia
+            FROM agendamentos A
+            JOIN servicos S ON A.servico_id = S.id
+            JOIN perfil_barbeiro PB ON A.barbeiro_id = PB.barbeiro_id
+            WHERE A.cliente_id = ?
+            AND A.status IN ('agendado', 'concluido')
+            ORDER BY A.data_hora_inicio DESC
+            LIMIT 1
+        `;
+        
+        const [result] = await db.query(sql, [cliente_id]);
+
+        if (result.length === 0) {
+            return res.json(null); // Retorna nulo se não houver agendamentos
+        }
+
+        // Renomeamos a coluna no backend para "data_agendamento" para simplificar o frontend
+        return res.json(result[0]);
+
+    } catch (error) {
+        console.error("Erro ao buscar último agendamento:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar o último agendamento." });
     }
 });

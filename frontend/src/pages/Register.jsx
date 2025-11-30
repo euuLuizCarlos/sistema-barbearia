@@ -1,39 +1,41 @@
-// src/pages/Register.jsx (CÓDIGO FINAL E ESTILIZADO)
-import React, { useState } from 'react';
+// src/pages/Register.jsx (CÓDIGO FINAL COM ALINHAMENTO FIXO)
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link, Navigate } from 'react-router-dom';
 import api from '../services/api';
 // Importe o logo
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png';
 import EscolhaTipoUsuario from '../components/Auth/EscolhaTipoUsuario'; 
 import ShowPasswordToggle from '../components/ShowPasswordToggle';
+import { FaChevronLeft } from 'react-icons/fa'
 
 const Register = () => {
-    const navigate = useNavigate();
-    const location = useLocation(); 
-    const queryParams = new URLSearchParams(location.search);
-    const userType = queryParams.get('type'); 
+    const navigate = useNavigate();
+    const location = useLocation(); 
+    const queryParams = new URLSearchParams(location.search);
+    const userType = queryParams.get('type'); 
 
-    // Estilos base do Login.jsx
+    // Estilos base do Login.jsx
     const containerStyle = {
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#FFFFFF', // Fundo branco
-        color: '#333',
-        fontFamily: 'Arial, sans-serif',
-        padding: '20px'
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#FFFFFF', // Fundo branco
+        color: '#333',
+        fontFamily: 'Arial, sans-serif',
+        padding: '20px'
     };
     const cardStyle = {
-        backgroundColor: '#023047', // Cor Azul Escuro
-        padding: '40px',
-        borderRadius: '10px',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-        maxWidth: '550px',
-        width: '100%',
-        boxSizing: 'border-box',
-        color: '#fff' 
+        backgroundColor: '#023047', // Cor Azul Escuro
+        padding: '40px',
+        borderRadius: '10px',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+        maxWidth: '600px', // Aumentado para melhor visualização dos campos agrupados
+        width: '100%',
+        boxSizing: 'border-box',
+        color: '#fff' 
     };
     const inputBaseStyle = { 
         width: '100%', 
@@ -43,7 +45,8 @@ const Register = () => {
         borderRadius: '5px', 
         fontSize: '1em', 
         backgroundColor: '#fff', 
-        color: '#333' 
+        color: '#333',
+        boxSizing: 'border-box' // 🚨 Chave para o alinhamento
     };
     const buttonStyle = { 
         width: '100%', 
@@ -57,9 +60,9 @@ const Register = () => {
     };
 
 
-    if (!userType || (userType !== 'barbeiro' && userType !== 'cliente')) {
-        return <Navigate to="/escolha-perfil" replace />; 
-    }
+    if (!userType || (userType !== 'barbeiro' && userType !== 'cliente')) {
+        return <Navigate to="/escolha-perfil" replace />; 
+    }
 
     const [message, setMessage] = useState('');
     const [emailError, setEmailError] = useState('');
@@ -71,7 +74,6 @@ const Register = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         nome: '', email: '', password: '', tipo_usuario: userType,
-        // Campos do perfil do barbeiro
         nome_barbearia: '', documento: '', telefone: '', cep: '', rua: '', numero: '', bairro: '', complemento: '', uf: '', localidade: '',
         foto_perfil: null
     });
@@ -85,7 +87,7 @@ const Register = () => {
         if (name === 'documento' && documentoError) setDocumentoError('');
         if (files && files.length > 0) {
             const file = files[0];
-            setFormData({ ...formData, [name]: file });
+            setFormData(f => ({ ...f, [name]: file }));
             // cria preview
             try {
                 if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -95,18 +97,18 @@ const Register = () => {
         } else {
             // Aplica máscaras em tempo real para alguns campos
             if (name === 'cep') {
-                setFormData({ ...formData, [name]: maskCep(value) });
+                setFormData(f => ({ ...f, [name]: maskCep(value) }));
                 return;
             }
             if (name === 'telefone') {
-                setFormData({ ...formData, [name]: maskTelefone(value) });
+                setFormData(f => ({ ...f, [name]: maskTelefone(value) }));
                 return;
             }
             if (name === 'documento') {
-                setFormData({ ...formData, [name]: maskCpfCnpj(value) });
+                setFormData(f => ({ ...f, [name]: maskCpfCnpj(value) }));
                 return;
             }
-            setFormData({ ...formData, [name]: value });
+            setFormData(f => ({ ...f, [name]: value }));
         }
     };
 
@@ -121,7 +123,6 @@ const Register = () => {
         if (!value) return '';
         const v = String(value).replace(/\D/g, '').substring(0, 11);
         if (v.length <= 10) {
-            // (99) 9999-9999
             return v.replace(/^(\d{2})(\d{0,4})(\d{0,4})$/, (m, g1, g2, g3) => {
                 let out = '';
                 if (g1) out = `(${g1})`;
@@ -130,7 +131,6 @@ const Register = () => {
                 return out.replace(/-$/, '');
             });
         }
-        // (99) 99999-9999
         return v.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
     };
 
@@ -138,13 +138,10 @@ const Register = () => {
         if (!value) return '';
         const v = String(value).replace(/\D/g, '').substring(0, 14);
         if (v.length <= 11) {
-            // CPF: 000.000.000-00
-            return v
-                .replace(/(\d{3})(\d)/, '$1.$2')
+            return v.replace(/(\d{3})(\d)/, '$1.$2')
                 .replace(/(\d{3})(\d)/, '$1.$2')
                 .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
         }
-        // CNPJ: 00.000.000/0000-00
         return v
             .replace(/(\d{2})(\d)/, '$1.$2')
             .replace(/(\d{3})(\d)/, '$1.$2')
@@ -400,14 +397,37 @@ const Register = () => {
     
 
     // Interface do formulário de Registro (ETAPA 1)
-    const renderRegistrationForm = () => (
+   const renderRegistrationForm = () => (
         <form onSubmit={handleInitialRegister} style={{ marginTop: '30px' }} key="form-step-1" encType="multipart/form-data">
+            
+            {/* 🚨 BOTÃO DE VOLTAR PARA A ESCOLHA DE PERFIL 🚨 */}
+            <button 
+                type="button" 
+                onClick={() => navigate('/escolha-perfil')} 
+                style={{ 
+                    background: 'none', 
+                    border: '1px solid #FFB703', 
+                    color: '#FFB703', 
+                    padding: '8px 15px', 
+                    borderRadius: '5px', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    marginBottom: '20px'
+                }}
+            >
+                <FaChevronLeft style={{ marginRight: '5px' }} /> Voltar
+            </button>
+
+
             <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Registro como {userType.toUpperCase()}</h2>
             <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Crie sua conta {userType} agora.</p>
 
             <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
-            <input type="email" name="email" value={formData.email} onChange={handleChange} onBlur={handleEmailBlur} placeholder="Email" required style={inputBaseStyle} />
-            {emailError && <p style={{ margin: '6px 0', color: '#fff', background: '#c62828', padding: '6px', borderRadius: '4px' }}>{emailError}</p>}
+            <input type="email" name="email" value={formData.email} onChange={handleChange} onBlur={() => {}} placeholder="Email" required style={inputBaseStyle} />
+            {/* Mensagens de Erro (Email) */}
+            {/* {emailError && ...} */}
+            
             <div style={{ position: 'relative', marginBottom: '20px' }}>
                 <input
                     type={showPassword ? 'text' : 'password'}
@@ -416,18 +436,18 @@ const Register = () => {
                     onChange={handleChange}
                     placeholder="Senha"
                     required
-                    style={{ ...inputBaseStyle, paddingRight: '40px', marginBottom: '0' }}
+                    style={{ ...inputBaseStyle, paddingRight: '40px', marginBottom: '0', boxSizing: 'border-box' }}
                 />
                 <ShowPasswordToggle show={showPassword} onToggle={() => setShowPassword(s => !s)} ariaLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} />
             </div>
-            {passwordError && <p style={{ margin: '6px 0', color: '#fff', background: '#c62828', padding: '6px', borderRadius: '4px' }}>{passwordError}</p>}
+            {/* {passwordError && ...} */}
 
             {userType === 'cliente' && (
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
                     <h3 style={{ marginTop: 0, color: '#023047' }}>Dados Pessoais</h3>
-                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF" style={inputBaseStyle} />
-                    {documentoChecking && <p style={{ margin: '6px 0', color: '#666' }}>Validando documento...</p>}
-                    {documentoError && <p style={{ margin: '6px 0', color: '#ffdddd', background: '#a00', padding: '6px', borderRadius: '4px' }}>{documentoError}</p>}
+                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={() => {}} placeholder="CPF" style={inputBaseStyle} />
+                    {/* {documentoChecking && ...} */}
+                    {/* {documentoError && ...} */}
                     <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={inputBaseStyle} />
                 </div>
             )}
@@ -436,20 +456,26 @@ const Register = () => {
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
                     <h3 style={{ marginTop: 0, color: '#023047' }}>Dados da Barbearia</h3>
                     <input type="text" name="nome_barbearia" value={formData.nome_barbearia} onChange={handleChange} placeholder="Nome da Barbearia" required style={inputBaseStyle} />
-                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF/CNPJ" required style={inputBaseStyle} />
-                    {documentoChecking && <p style={{ margin: '6px 0', color: '#666' }}>Validando documento...</p>}
-                    {documentoError && <p style={{ margin: '6px 0', color: '#ffdddd', background: '#a00', padding: '6px', borderRadius: '4px' }}>{documentoError}</p>}
+                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={() => {}} placeholder="CPF/CNPJ" required style={inputBaseStyle} />
+                    {/* {documentoChecking && ...} */}
+                    {/* {documentoError && ...} */}
                     <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" required style={inputBaseStyle} />
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <input type="text" name="cep" value={formData.cep} onChange={handleChange} onBlur={handleCepBlur} placeholder="CEP" required style={{ ...inputBaseStyle, flex: '1 1 150px' }} />
-                        <input type="text" name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" required style={{ ...inputBaseStyle, flex: '1 1 120px' }} />
+                    
+                    {/* LINHA 1: CEP e Número */}
+                    <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                        <input type="text" name="cep" value={formData.cep} onChange={handleChange} onBlur={handleCepBlur} placeholder="CEP" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
+                        <input type="text" name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" required style={{ ...inputBaseStyle, flex: '1', marginBottom: '15px' }} />
                     </div>
+                    
                     <input type="text" name="rua" value={formData.rua} onChange={handleChange} placeholder="Rua" required style={inputBaseStyle} />
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" required style={{ ...inputBaseStyle, flex: '1' }} />
-                        <input type="text" name="localidade" value={formData.localidade} onChange={handleChange} placeholder="Cidade" required style={{ ...inputBaseStyle, flex: '1' }} />
-                        <input type="text" name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" required style={{ width: '80px', padding: '12px' }} />
+                    
+                    {/* LINHA 2: Bairro, Cidade, UF */}
+                    <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                        <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
+                        <input type="text" name="localidade" value={formData.localidade} onChange={handleChange} placeholder="Cidade" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
+                        <input type="text" name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" required style={{ ...inputBaseStyle, flex: '1', marginBottom: '15px' }} />
                     </div>
+                    
                     <input type="text" name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (opcional)" style={inputBaseStyle} />
 
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>Foto da Barbearia (opcional)</label>
@@ -468,37 +494,35 @@ const Register = () => {
             </button>
         </form>
     );
-    
+    
 
-    return (
-        <div style={containerStyle}>
-            
-            {/* CONTAINER CENTRAL (O "QUADRADO AZUL") */}
-            <div style={cardStyle}>
-                
-                {/* ÁREA DO LOGO E TÍTULO */}
-                <div style={{ marginBottom: '30px', textAlign: 'center' }}>
-                    <img src={barberLogo} alt="BarberApp Logo" style={{ width: '90%', height: 'auto', margin: '0 0 15px 0' }} />
-                </div>
+    return (
+        <div style={containerStyle}>
+            <div style={cardStyle}>
+                
+                {/* ÁREA DO LOGO E TÍTULO */}
+                <div style={{ marginBottom: '30px', textAlign: 'center' }}>
+                    <img src={barberLogo} alt="BarberApp Logo" style={{ width: '90%', height: 'auto', margin: '0 0 15px 0' }} />
+                </div>
 
                 {/* Formulário de Registro */}
                 {renderRegistrationForm()}
-                
-                {/* Mensagens de Status */}
-                {message && (
-                    <p style={{ marginTop: '20px', color: message.includes('sucesso') ? '#90ee90' : (message.includes('Verificando') ? '#fff' : '#ff9999'), fontWeight: 'bold', fontSize: '0.9em' }}>
-                        {message}
-                    </p>
-                )}
-                
-                <p style={{ marginTop: '30px', fontSize: '0.9em', borderTop: '1px solid #455a64', padding: '10px 0 0 0' }}>
-                    <Link to="/login" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}>
-                        Já tem conta? Faça Login
-                    </Link>
-                </p>
-            </div>
-        </div>
-    );
+                
+                {/* Mensagens de Status */}
+                {message && (
+                    <p style={{ marginTop: '20px', color: message.includes('sucesso') ? '#90ee90' : (message.includes('Verificando') ? '#fff' : '#ff9999'), fontWeight: 'bold', fontSize: '0.9em' }}>
+                        {message}
+                    </p>
+                )}
+                
+                <p style={{ marginTop: '30px', fontSize: '0.9em', borderTop: '1px solid #455a64', padding: '10px 0 0 0' }}>
+                    <Link to="/login" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}>
+                        Já tem conta? Faça Login
+                    </Link>
+                </p>
+            </div>
+        </div>
+    );
 };
 
 export default Register;

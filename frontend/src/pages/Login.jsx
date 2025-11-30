@@ -1,13 +1,14 @@
-// src/pages/Login.jsx (CÓDIGO FINAL E COMPLETO - CORRIGINDO A IMAGEM E O FLUXO)
+// src/pages/Login.jsx (CÓDIGO FINAL E COMPLETO - CORRIGINDO ALINHAMENTO)
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext'; 
 import ShowPasswordToggle from '../components/ShowPasswordToggle';
-
-// CORREÇÃO FINAL DA IMAGEM: Garante que a extensão .png (ou .jpg se você o renomeou) esteja correta
 import barberLogo from '../assets/Gemini_Generated_Image_lkroqflkroqflkro.png'; 
 
+// Definindo cores localmente
+const PRIMARY_COLOR = '#023047';
+const ACCENT_COLOR = '#FFB703';
 
 const Login = () => {
     const [formData, setFormData] = useState({
@@ -36,7 +37,6 @@ const Login = () => {
                 password: formData.password
             });
 
-            // SUCESSO:
             login(response.data.token, response.data.userId, response.data.userName, response.data.userType);
             
             setMessage('Login efetuado com sucesso! Redirecionando...');
@@ -47,22 +47,16 @@ const Login = () => {
         } catch (error) {
             let errorMessage = error.response?.data?.error || 'Erro de rede. Verifique se o backend está rodando.';
             
-            // LÓGICA CHAVE DE REDIRECIONAMENTO PARA ATIVAÇÃO NO 403
             if (error.response?.status === 403 && errorMessage.includes('Ativação pendente')) {
                  const pendingUserId = error.response.data?.userId;
-
                  setMessage(errorMessage + " Redirecionando para a ativação...");
-                 
                  setTimeout(() => {
-                    // REDIRECIONAMENTO CORRETO: Manda para a rota de ativação com o ID do usuário
-                    navigate(`/ativacao?userId=${pendingUserId}`); 
+                     navigate(`/ativacao?userId=${pendingUserId}`); 
                  }, 1500);
-              } else {
-                  // Erro normal (senha errada, usuário inexistente, etc.)
-                  setMessage(errorMessage);
-                  // Se for erro 401 (credenciais inválidas), mostramos o link "Esqueceu sua senha?"
-                  if (error.response?.status === 401) setShowForgotLink(true);
-              }
+            } else {
+                 setMessage(errorMessage);
+                 if (error.response?.status === 401) setShowForgotLink(true);
+            }
         }
     };
 
@@ -81,11 +75,11 @@ const Login = () => {
             
             {/* CONTAINER CENTRAL (O "QUADRADO AZUL") */}
             <div style={{
-                backgroundColor: '#023047', 
+                backgroundColor: PRIMARY_COLOR, 
                 padding: '40px',
                 borderRadius: '10px',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-                maxWidth: '550px', // MAIS LARGO
+                maxWidth: '550px', 
                 width: '100%',
                 boxSizing: 'border-box',
                 color: '#fff' 
@@ -98,12 +92,12 @@ const Login = () => {
                         alt="BarberApp Logo"
                         style={{ width: '90%', height: 'auto', margin: '0 0 15px 0' }} 
                     />
-                    <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Área de Acesso</h2>
+                    <h2 style={{ margin: '0', fontSize: '1.5em', color: ACCENT_COLOR }}>Área de Acesso</h2>
                     <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Entre com suas credenciais de barbeiro.</p>
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    {/* INPUTS */}
+                    {/* INPUT EMAIL */}
                     <input
                         type="email"
                         name="email"
@@ -111,7 +105,17 @@ const Login = () => {
                         onChange={handleChange}
                         placeholder="Email"
                         required
-                        style={{ width: '100%', padding: '12px 10px', marginBottom: '20px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
+                        style={{ 
+                            width: '100%', 
+                            padding: '12px 10px', 
+                            marginBottom: '20px', 
+                            border: '1px solid #455a64', 
+                            borderRadius: '5px', 
+                            fontSize: '1em', 
+                            backgroundColor: '#fff', 
+                            color: '#333',
+                            boxSizing: 'border-box' // 🚨 Garante o mesmo box-sizing do campo de senha
+                        }}
                     />
                     <div style={{ position: 'relative', marginBottom: '30px' }}>
                         <input
@@ -121,15 +125,24 @@ const Login = () => {
                             onChange={handleChange}
                             placeholder="Senha"
                             required
-                            style={{ width: '100%', padding: '12px 40px 12px 10px', border: '1px solid #455a64', borderRadius: '5px', fontSize: '1em', backgroundColor: '#fff', color: '#333' }}
+                            style={{ 
+                                width: '100%', 
+                                padding: '12px 40px 12px 10px', // PADDING para o ícone
+                                border: '1px solid #455a64', 
+                                borderRadius: '5px', 
+                                fontSize: '1em', 
+                                backgroundColor: '#fff', 
+                                color: '#333',
+                                boxSizing: 'border-box' // Garante que a largura de 100% seja respeitada
+                            }}
                         />
                         <ShowPasswordToggle show={showPassword} onToggle={() => setShowPassword(s => !s)} ariaLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} />
                     </div>
                     <button
                         type="submit"
-                        style={{ width: '100%', padding: '12px 10px', backgroundColor: '#FFB703', color: '#023047', border: 'none', borderRadius: '5px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer', transition: 'background-color 0.3s ease' }}
+                        style={{ width: '100%', padding: '12px 10px', backgroundColor: ACCENT_COLOR, color: PRIMARY_COLOR, border: 'none', borderRadius: '5px', fontSize: '1.1em', fontWeight: 'bold', cursor: 'pointer', transition: 'background-color 0.3s ease' }}
                         onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#cc9000'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#FFB703'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = ACCENT_COLOR}
                     >
                         Entrar
                     </button>
@@ -150,7 +163,7 @@ const Login = () => {
                 <p style={{ marginTop: '30px', fontSize: '0.9em' }}>
                     <a 
                         href="/register" 
-                        style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}
+                        style={{ color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 'bold' }}
                         onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                         onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
                     >
@@ -159,7 +172,7 @@ const Login = () => {
                 </p>
                 {showForgotLink && (
                     <p style={{ marginTop: '8px', fontSize: '0.9em' }}>
-                        <a href="/forgot-password" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}
+                        <a href="/forgot-password" style={{ color: ACCENT_COLOR, textDecoration: 'none', fontWeight: 'bold' }}
                             onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                             onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}>
                             Esqueceu sua senha?

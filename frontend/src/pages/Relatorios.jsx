@@ -1,10 +1,11 @@
-// src/pages/Relatorios.jsx (CÓDIGO CORRIGIDO PARA O MODAL)
+// src/pages/Relatorios.jsx (CÓDIGO ATUALIZADO)
+
 import React, { useState } from 'react';
 import RelatorioUnificado from '../components/ControleCaixa/RelatorioUnificado';
-import ModalRelatorioDetalhe from '../components/ControleCaixa/ModalRelatorioDetalhe'; // 1. IMPORTANDO O MODAL
+import ModalRelatorioDetalhe from '../components/ControleCaixa/ModalRelatorioDetalhe'; 
 
 const Relatorios = () => {
-    // Estado para controlar a visualização: 'daily', 'monthly', 'annual', 'all'
+    // Estado para controlar a visualização: 'daily', 'monthly', 'annual'
     const [reportType, setReportType] = useState('monthly'); 
 
     // Estado para controlar as datas
@@ -19,7 +20,7 @@ const Relatorios = () => {
     const [ano, setAno] = useState(hoje.getFullYear());
 
 
-    // --- 2. LÓGICA DO MODAL ---
+    // --- LÓGICA DO MODAL ---
     const [relatorioDetalhe, setRelatorioDetalhe] = useState(null); 
     
     const handleOpenDetalhe = (data) => {
@@ -39,7 +40,7 @@ const Relatorios = () => {
     return (
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
             
-            {/* 3. RENDERIZAÇÃO DO MODAL DE DETALHES */}
+            {/* RENDERIZAÇÃO DO MODAL DE DETALHES */}
             {relatorioDetalhe && (
                 <ModalRelatorioDetalhe 
                     dados={relatorioDetalhe} 
@@ -57,13 +58,14 @@ const Relatorios = () => {
                     onChange={(e) => setReportType(e.target.value)}
                     style={{ padding: '10px', fontSize: '1.1em', fontWeight: 'bold' }}
                 >
-                    <option value="monthly">Relatório Mensal (MoM)</option>
-                    <option value="daily">Relatório Diário (DoD)</option>
-                    <option value="annual">Relatório Anual (YoY)</option>
-                    <option value="all">Visão Geral Completa</option>
+                    {/* 🚨 RÓTULOS SIMPLIFICADOS AQUI 🚨 */}
+                    <option value="monthly">Relatório Mensal</option>
+                    <option value="daily">Relatório Diário</option>
+                    <option value="annual">Relatório Anual</option>
+                    {/* Opção 'all' (Visão Geral) Removida */}
                 </select>
 
-                {/* SELETORES DE DATA CONDICIONAIS */}
+                {/* SELETORES DE DATA CONDICIONAIS (Mantidos) */}
                 {reportType === 'daily' && (
                     <input type="date" value={dataDiaria} onChange={(e) => setDataDiaria(e.target.value)} style={{ padding: '10px' }} />
                 )}
@@ -82,7 +84,7 @@ const Relatorios = () => {
                 mes={mesMensal}
                 ano={anoMensal}
                 anoAnual={ano}
-                onOpenDetalhe={handleOpenDetalhe} // <--- CORREÇÃO: PASSANDO O HANDLER AQUI
+                onOpenDetalhe={handleOpenDetalhe}
             />
         </div>
     );

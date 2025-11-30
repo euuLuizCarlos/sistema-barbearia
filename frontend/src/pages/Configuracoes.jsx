@@ -1,32 +1,86 @@
-// src/pages/Configuracoes.jsx (CORREÇÃO FINAL)
+// src/pages/Configuracoes.jsx (CÓDIGO FINAL E CORRIGIDO)
 
-import React from 'react';
+import React, { useState } from 'react';
+// Importa o componente de controle de caixa
 import ConfiguracaoTaxaMaquininha from "../components/ControleCaixa/ConfiguracaoTaxaMaquininha";
-import ExclusaoConta from "../components/Configuracoes/ExclusaoConta";
-// 🚨 MUDANÇA: Buscando da pasta /components/Configuracoes ou /pages (Se estava falhando, vamos para /components)
+// 🚨 CAMINHO CORRIGIDO: Assume que o arquivo está em src/components/Configuracoes
 import GerenciarDiasBloqueados from "../components/Configuracoes/GerenciarDiasBloqueados.jsx"; 
 
 
+const PRIMARY_COLOR = '#023047';
+const ACCENT_COLOR = '#FFB703';
+
 const Configuracoes = () => {
-// ...
+    // 💡 ESTADO: Qual seção deve ser exibida? ('taxa', 'bloqueios', ou null)
+    const [secaoAtiva, setSecaoAtiva] = useState(null); 
+    
+    // --- FUNÇÃO AUXILIAR PARA RENDERIZAÇÃO ---
+    const renderSecao = () => {
+        switch (secaoAtiva) {
+            case 'taxa':
+                // Passamos uma função para fechar a seção após a ação ou ao clicar no botão Fechar
+                return <ConfiguracaoTaxaMaquininha onCancel={() => setSecaoAtiva(null)} />;
+            case 'bloqueios':
+                return <GerenciarDiasBloqueados onCancel={() => setSecaoAtiva(null)} />;
+            default:
+                return (
+                    <p style={{ marginTop: '20px', color: '#555', fontSize: '1.1em' }}>
+                        Selecione uma opção de configuração acima para visualizar os painéis de gestão.
+                    </p>
+                );
+        }
+    };
+    
+    // --- ESTILOS DOS BOTÕES DE NAVEGAÇÃO ---
+    const linkStyle = (active) => ({
+        padding: '15px 25px',
+        margin: '0 10px',
+        borderRadius: '8px',
+        backgroundColor: active ? PRIMARY_COLOR : '#fff',
+        color: active ? ACCENT_COLOR : PRIMARY_COLOR,
+        border: `1px solid ${PRIMARY_COLOR}`,
+        cursor: 'pointer',
+        fontWeight: 'bold',
+        transition: 'transform 0.2s, box-shadow 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        boxShadow: active ? '0 4px 8px rgba(0, 0, 0, 0.1)' : 'none',
+    });
+
+
     return (
-        <div style={{ padding: '20px' }}>
-            <h1 style={{ borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Configurações do Sistema</h1>
+        <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+            <h1 style={{ borderBottom: '1px solid #ddd', paddingBottom: '10px', color: PRIMARY_COLOR }}>
+                Configurações do Sistema
+            </h1>
             
-            {/* 1. Gestão de Agenda (NOVA OPÇÃO) */}
-            <GerenciarDiasBloqueados />
+            {/* 💡 CONTROLES DE NAVEGAÇÃO SUPERIOR (Botões Clicáveis) */}
+            <div style={{ display: 'flex', marginBottom: '30px', marginTop: '30px' }}>
+                
+                <div 
+                    style={linkStyle(secaoAtiva === 'bloqueios')} 
+                    onClick={() => setSecaoAtiva('bloqueios')}
+                >
+                    <span style={{ fontSize: '1.2em' }}>📅</span> Gerenciar Dias Bloqueados
+                </div>
+                
+                <div 
+                    style={linkStyle(secaoAtiva === 'taxa')} 
+                    onClick={() => setSecaoAtiva('taxa')}
+                >
+                    <span style={{ fontSize: '1.2em' }}>💳</span> Configuração da Taxa
+                </div>
+                
+            </div>
             
-            <hr style={{ margin: '30px 0' }}/> 
+            <hr style={{ margin: '0', borderColor: '#ccc' }}/>
+
+            {/* 💡 ÁREA DE RENDERIZAÇÃO CONDICIONAL */}
+            <div style={{ paddingTop: '20px' }}>
+                {renderSecao()}
+            </div>
             
-            {/* 2. Gestão Financeira */}
-            <ConfiguracaoTaxaMaquininha />
-            
-            <hr style={{ margin: '30px 0' }}/>
-            
-            {/* 3. Gestão de Conta */}
-            <ExclusaoConta />
-            
-            <p style={{ marginTop: '30px', color: '#888' }}>*As configurações de horário semanal estão em um painel separado.</p>
         </div>
     );
 };
