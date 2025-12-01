@@ -1,13 +1,13 @@
-// src/components/Agendamento/ListaAgendamentos.jsx
+// src/components/Agendamento/ListaAgendamentos.jsx (VERSÃO FINAL E CORRIGIDA)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api'; 
-import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSearch, FaStar, FaUserTie } from 'react-icons/fa';
+// 🚨 CORREÇÃO: FaUserCircle ADICIONADO AQUI 🚨
+import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSearch, FaStar, FaUserTie, FaUserCircle } from 'react-icons/fa';
 import ModalFechamentoComanda from './ModalFechamentoComanda';
 import { useUi } from '../../contexts/UiContext'; 
 import { useAuth } from '../../contexts/AuthContext'; 
-// 🚨 CAMINHO CORRIGIDO 🚨
-import ModalAvaliacaoBarbeiro from '../Auth/ModalAvaliacaoBarbeiro.jsx'; 
+// import ModalAvaliacaoBarbeiro from '../Auth/ModalAvaliacaoBarbeiro.jsx'; // 🚨 REMOVIDO: ESTE MODAL PERTENCE À VISÃO DO CLIENTE 🚨
 
 // =======================================================
 // DEFINIÇÕES DE CORES LOCAIS (Para consistência e estabilidade)
@@ -18,11 +18,13 @@ const COLORS = {
     SUCCESS: '#4CAF50',
     ERROR: '#cc0000',
     SECONDARY_TEXT: '#888888',
+    BACKGROUND_LIGHT: '#f8f8f8', // 🚨 ADICIONADO: Nova cor para usar no fundo 🚨
 };
 
 
 const ListaAgendamentos = ({ refreshKey }) => {
     const { user } = useAuth();
+    const ui = useUi(); // 🚨 CORREÇÃO: useUi deve ser chamado aqui, dentro do componente 🚨
     const barbeiroId = user?.userId;
 
     const [agendamentos, setAgendamentos] = useState([]);
@@ -32,8 +34,9 @@ const ListaAgendamentos = ({ refreshKey }) => {
     const [dataPesquisa, setDataPesquisa] = useState(''); 
     const [agendamentoToClose, setAgendamentoToClose] = useState(null); 
 
-    // ESTADO PARA O NOVO MODAL
-    const [agendamentoToReview, setAgendamentoToReview] = useState(null);
+    // O estado 'agendamentoToReview' e a lógica relacionada ao ModalAvaliacaoBarbeiro
+    // foram removidos deste componente, pois eles pertencem à interface do cliente.
+    // const [agendamentoToReview, setAgendamentoToReview] = useState(null);
 
     // Funções de Estilo (para o Status)
     const getStatusStyle = (status) => {
@@ -73,16 +76,20 @@ const ListaAgendamentos = ({ refreshKey }) => {
         setLoading(true);
         setError(null);
         try {
-            let url = dataPesquisa 
+            // Se dataPesquisa estiver vazia, buscará a data atual no backend.
+            // Se tiver um valor, buscará para a data específica.
+            const url = dataPesquisa 
                 ? `/agendamentos/data?data=${dataPesquisa}` 
-                : `/agendamentos`;
+                : `/agendamentos/data`; // O backend deve ter a lógica para data atual se 'data' não for fornecida.
             
             const response = await api.get(url); 
+            
+            // 🚨 NOTA: O backend DEVE retornar a coluna 'foto_cliente_url' (como no server.js que forneci)
             setAgendamentos(response.data);
             
         } catch (error) {
             console.error("Erro ao buscar agendamentos:", error);
-            setError(error.response?.data?.error || 'Erro ao carregar a agenda. Verifique o backend.');
+            setError(error.response?.data?.error || 'Erro ao carregar a agenda. Verifique o backend e sua rota /agendamentos/data.');
         } finally {
             setLoading(false);
         }
@@ -96,8 +103,6 @@ const ListaAgendamentos = ({ refreshKey }) => {
     // ---------------------------------------------
     // FUNÇÕES DE AÇÃO
     // ---------------------------------------------
-
-    const ui = useUi();
 
     // FUNÇÃO PARA CANCELAR AGENDAMENTO (COM MOTIVO)
     const handleCancelarAgendamento = async (agendamentoId) => {
@@ -133,17 +138,6 @@ const ListaAgendamentos = ({ refreshKey }) => {
         setAgendamentoToClose(null); // Fecha o modal de comanda
         ui.showPostIt(message, 'success');
         fetchAgendamentos(); // Recarrega a lista
-    };
-    
-    // FUNÇÃO CHAMADA QUANDO A AVALIAÇÃO DO BARBEIRO É CONCLUÍDA PELO CLIENTE (Se usarmos aqui)
-    const handleReviewCompleted = () => {
-        setAgendamentoToReview(null); // Fecha o modal de avaliação
-        fetchAgendamentos(); 
-    };
-
-    // Função para verificar se o Barbeiro foi avaliado neste agendamento
-    const wasReviewed = (agendamento) => {
-        return agendamento.nota_barbeiro_cliente !== undefined && agendamento.nota_barbeiro_cliente !== null;
     };
     
     // ---------------------------------------------
@@ -185,7 +179,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
                 </div>
                 {dataPesquisa && (
                     <p style={{ marginTop: '10px', color: COLORS.PRIMARY, fontWeight: 'bold' }}>
-                        * Exibindo agendamentos para {dataPesquisa}.
+                        * Exibindo agendamentos para {new Date(dataPesquisa).toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' })}.
                     </p>
                 )}
             </div>
@@ -213,6 +207,11 @@ const ListaAgendamentos = ({ refreshKey }) => {
                         const dataFim = new Date(a.data_hora_fim);
                         const valorFormatado = parseFloat(a.valor_servico || 0).toFixed(2);
                         const isPending = a.status === 'agendado';
+                        
+                        // 🚨 LÓGICA DA FOTO DO CLIENTE 🚨
+                        const showPhoto = a.foto_cliente_url; // URL completa vinda do backend
+                        // A propriedade nome_cliente nunca deve ser null, mas garantimos um fallback
+                        const photoPlaceholderInitials = a.nome_cliente ? a.nome_cliente.substring(0, 2).toUpperCase() : 'CL';
 
                         return (
                             <li key={a.id} style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '15px', marginBottom: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', backgroundColor: isPending ? '#f0fff4' : '#fff' }}>
@@ -228,19 +227,33 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                     </span>
                                 </div>
 
-                                {/* LINHA 2: DETALHES PRINCIPAIS */}
-                                <p style={{ margin: '5px 0' }}><FaUser style={{ marginRight: '5px'}}/> Cliente: **{a.nome_cliente}**</p>
+                                {/* 🚨 LINHA 2: FOTO, NOME DO CLIENTE E REPUTAÇÃO 🚨 */}
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                                    
+                                    {/* 💡 CÍRCULO DA FOTO/INICIAIS */}
+                                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: COLORS.SECONDARY_TEXT, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginRight: '15px', border: '2px solid #ccc' }}>
+                                        {showPhoto ? (
+                                            <img src={showPhoto} alt={a.nome_cliente} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                            <FaUserCircle size={35} color="white" />
+                                            // Ou para iniciais: <span style={{color: 'white', fontSize: '1.2em'}}>{photoPlaceholderInitials}</span>
+                                        )}
+                                    </div>
+
+                                    {/* NOME DO CLIENTE E REPUTAÇÃO */}
+                                    <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <p style={{ margin: 0, fontWeight: 'bold', fontSize: '1.1em', color: COLORS.PRIMARY }}>
+                                            Cliente: **{a.nome_cliente}**
+                                        </p>
+                                        {renderReputacaoCliente(a.media_avaliacao_cliente)}
+                                    </div>
+                                </div>
+
+                                {/* DADOS DO SERVIÇO E VALOR */}
                                 <p style={{ margin: '5px 0' }}><FaCut style={{ marginRight: '5px'}}/> Serviço: **{a.nome_servico}**</p>
                                 <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: COLORS.SUCCESS }}/> Valor Base: **R$ {valorFormatado}**</p>
                                 
-                                {/* 🚨 REPUTAÇÃO DO CLIENTE 🚨 */}
-                                <div style={{ margin: '10px 0 10px 0', borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.9em', color: '#555', display: 'flex', alignItems: 'center' }}>
-                                        <FaUserTie style={{ marginRight: '5px' }} /> Reputação do Cliente:
-                                    </span>
-                                    {renderReputacaoCliente(a.media_avaliacao_cliente)}
-                                </div>
-
+                                
                                 {/* EXIBIÇÃO DO MOTIVO DE CANCELAMENTO */}
                                 {a.status === 'cancelado' && a.motivo_cancelamento && (
                                     <p style={{ 
@@ -259,7 +272,7 @@ const ListaAgendamentos = ({ refreshKey }) => {
                                     </div>
                                 )}
 
-                                {/* LINHA 4: BOTÕES DE AÇÃO */}
+                                {/* BOTÕES DE AÇÃO (Apenas se 'agendado') */}
                                 {isPending && (
                                     <div style={{ marginTop: '20px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
                                         <button 
@@ -290,15 +303,6 @@ const ListaAgendamentos = ({ refreshKey }) => {
                     agendamento={agendamentoToClose}
                     onClose={() => setAgendamentoToClose(null)}
                     onFinish={handleFechamentoSuccess} 
-                />
-            )}
-            
-            {/* 🚨 MODAL DE AVALIAÇÃO DO BARBEIRO (Cliente avalia Barbeiro) */}
-            {/* ESTA RENDERIZAÇÃO ESTÁ ERRADA AQUI! Ela deve estar no MeusAgendamentos.jsx (Cliente) */}
-            {agendamentoToReview && (
-                <ModalAvaliacaoBarbeiro 
-                    agendamento={agendamentoToReview}
-                    onAvaliacaoConcluida={handleReviewCompleted}
                 />
             )}
             

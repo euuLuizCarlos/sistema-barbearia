@@ -1,13 +1,22 @@
-// src/pages/VisualizacaoBarbearia.jsx (CÓDIGO COMPLETO E FINAL)
+// src/pages/VisualizacaoBarbearia.jsx (CÓDIGO FINAL E CORRIGIDO PARA ERRO DE ESCOPO DE COR)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
-import { FaCalendarAlt, FaCut, FaClock, FaChevronLeft, FaStar, FaDollarSign, FaSearch, FaMapMarkerAlt, FaRuler, FaUser, FaComment, FaUserTie } from 'react-icons/fa';
+import { FaChevronLeft, FaStar, FaDollarSign, FaSearch, FaMapMarkerAlt, FaRuler, FaUser, FaComment, FaUserTie, FaCut, FaClock } from 'react-icons/fa';
 
 const VisualizacaoBarbearia = () => {
     const { barbeiroId } = useParams(); 
     const navigate = useNavigate();
+
+    // --- 🚨 CORREÇÃO: DEFINIÇÃO DE CORES MOVIDA PARA DENTRO DO COMPONENTE 🚨 ---
+    const PRIMARY_COLOR = '#023047'; 
+    const ACCENT_COLOR = '#FFB703';
+    const secondaryColor = '#888888';
+    const SUCCESS_COLOR = '#4CAF50';
+    const ERROR_COLOR = '#cc0000';
+    const MAX_WIDTH = '800px'; 
+    // --------------------------------------------------------------------------
 
     // ESTADOS
     const [servicos, setServicos] = useState([]);
@@ -18,26 +27,23 @@ const VisualizacaoBarbearia = () => {
     const [activeTab, setActiveTab] = useState('servicos'); 
     const [searchServiceTerm, setSearchServiceTerm] = useState('');
     
-    // --- ESTILOS PADRÕES ---
-    const primaryColor = '#023047'; 
-    const accentColor = '#FFB703';
-    const secondaryColor = '#888888';
-    const buttonStyle = { padding: '8px 15px', backgroundColor: primaryColor, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' };
+    // --- ESTILOS PADRÕES (Funções agora usam as constantes definidas acima) ---
+    const buttonStyle = { padding: '8px 15px', backgroundColor: PRIMARY_COLOR, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' };
     const tabStyle = (tabName) => ({ 
         padding: '10px 15px', 
         cursor: 'pointer', 
         fontWeight: 'bold',
-        borderBottom: `3px solid ${activeTab === tabName ? accentColor : 'transparent'}`,
-        color: activeTab === tabName ? primaryColor : secondaryColor
+        borderBottom: `3px solid ${activeTab === tabName ? ACCENT_COLOR : 'transparent'}`,
+        color: activeTab === tabName ? PRIMARY_COLOR : secondaryColor
     });
 
 
-    // --- LÓGICA DE BUSCA DE DADOS INICIAIS ---
+    // --- LÓGICA DE BUSCA DE DADOS INICIAIS (Mantida) ---
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoading(true);
             try {
-                // 1. Busca detalhes da Barbearia (Inclui media_avaliacao_barbeiro no resultado)
+                // 1. Busca detalhes da Barbearia
                 const infoResponse = await api.get(`/barbearia/${barbeiroId}/detalhes`);
                 const info = infoResponse.data; 
                 setBarbeariaInfo(info);
@@ -77,10 +83,9 @@ const VisualizacaoBarbearia = () => {
         return <h1 style={{ padding: '50px' }}>Carregando perfil da barbearia...</h1>;
     }
     if (error) {
-        return <h1 style={{ padding: '50px', color: 'red' }}>{error}</h1>;
+        return <h1 style={{ padding: '50px', color: ERROR_COLOR }}>{error}</h1>;
     }
     
-    // Certifique-se de que todas as propriedades estão sendo extraídas aqui
     const { 
         nome_barbearia, rua, bairro, localidade, uf, foto_url, 
         nome_barbeiro, media_avaliacao_barbeiro, telefone, 
@@ -112,7 +117,6 @@ const VisualizacaoBarbearia = () => {
     
     // --- TELAS DE CONTEÚDO (JSX) ---
     
-    // Renderiza a lista de serviços e o campo de pesquisa
     const RenderServicos = () => (
         <div style={{ padding: '20px 0' }}>
             {/* Barra de Pesquisa de Serviço */}
@@ -136,7 +140,7 @@ const VisualizacaoBarbearia = () => {
                             {/* Detalhes do Serviço */}
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '1.1em' }}>{servico.nome}</h4>
-                                <p style={{ margin: '5px 0 0 0', color: '#4CAF50', fontWeight: 'bold' }}>
+                                <p style={{ margin: '5px 0 0 0', color: SUCCESS_COLOR, fontWeight: 'bold' }}>
                                     <FaDollarSign size={12} style={{ marginRight: '5px' }} /> R$ {parseFloat(servico.preco).toFixed(2)}
                                 </p>
                                 <p style={{ margin: 0, color: secondaryColor, fontSize: '0.9em' }}>
@@ -148,7 +152,7 @@ const VisualizacaoBarbearia = () => {
                         {/* Botão de Agendar (Ação Principal) */}
                         <button 
                             onClick={() => navigate(`/agendamento/${barbeiroId}/selecionar-horario/${servico.id}`)}
-                            style={{ ...buttonStyle, backgroundColor: accentColor, color: primaryColor, fontWeight: 'bold' }}
+                            style={{ ...buttonStyle, backgroundColor: ACCENT_COLOR, color: PRIMARY_COLOR, fontWeight: 'bold' }}
                         >
                             Agendar
                         </button>
@@ -158,9 +162,8 @@ const VisualizacaoBarbearia = () => {
         </div>
     );
     
-    // Renderiza os detalhes do Barbeiro e Endereço (Corrigido)
     const RenderDetalhes = () => (
-        <div style={{ padding: '20px 0', color: primaryColor }}>
+        <div style={{ padding: '20px 0', color: PRIMARY_COLOR }}>
             
             <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Informações do Profissional</h3>
             <p>
@@ -193,14 +196,22 @@ const VisualizacaoBarbearia = () => {
         </div>
     );
 
-    // Renderiza a lista de avaliações e comentários
     const RenderAvaliacoes = () => {
         const comentarios = avaliacoesDetalhe?.comentarios || [];
 
+        // Estilo para o círculo da foto do cliente
+        const photoCircleStyle = {
+            width: '40px', height: '40px', borderRadius: '50%', 
+            backgroundColor: secondaryColor, color: 'white', // Cor de fundo neutra
+            display: 'flex', justifyContent: 'center', alignItems: 'center', 
+            fontSize: '0.8em', fontWeight: 'bold', marginRight: '10px', 
+            overflow: 'hidden'
+        };
+
         return (
-            <div style={{ padding: '20px 0', color: primaryColor }}>
+            <div style={{ padding: '20px 0', color: PRIMARY_COLOR }}>
                 <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '5px', marginBottom: '20px' }}>
-                    <FaStar style={{ color: accentColor }}/> Comentários de Clientes ({totalAvaliacoes} total)
+                    <FaStar style={{ color: ACCENT_COLOR }}/> Comentários de Clientes ({totalAvaliacoes} total)
                 </h3>
                 
                 {totalAvaliacoes === 0 ? (
@@ -209,15 +220,38 @@ const VisualizacaoBarbearia = () => {
                     <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                         {comentarios.map((c, index) => (
                             <div key={index} style={{ border: '1px solid #ddd', padding: '15px', borderRadius: '8px', marginBottom: '15px', backgroundColor: '#f9f9f9' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                    <span style={{ fontWeight: 'bold' }}>
-                                        <FaUser size={12} style={{ marginRight: '5px' }} /> {c.nome_cliente}
-                                    </span>
-                                    <span style={{ color: accentColor }}>
-                                        {Array.from({ length: c.nota }, (_, i) => <FaStar key={i} size={14} />)}
-                                    </span>
+                                
+                                {/* 🚨 LINHA DA FOTO, NOME E ESTRELAS 🚨 */}
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                                    
+                                    {/* CÍRCULO DA FOTO/INICIAIS */}
+                                    <div style={photoCircleStyle}>
+                                        {c.foto_cliente_url ? (
+                                            <img 
+                                                src={c.foto_cliente_url} 
+                                                alt={c.nome_cliente} 
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                            />
+                                        ) : (
+                                            // Fallback para Iniciais se a URL da foto for null
+                                            (c.nome_cliente ? c.nome_cliente.substring(0, 2).toUpperCase() : 'CL')
+                                        )}
+                                    </div>
+
+                                    {/* NOME E ESTRELAS */}
+                                    <div style={{ flexGrow: 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                                {c.nome_cliente}
+                                            </span>
+                                            <div style={{ color: ACCENT_COLOR }}>
+                                                {Array.from({ length: c.nota }, (_, i) => <FaStar key={i} size={14} />)}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: primaryColor }}>
+                                
+                                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: PRIMARY_COLOR }}>
                                     **Serviço:** {c.nome_servico || 'Não especificado'}
                                 </p>
                                 {c.observacao && (
@@ -235,10 +269,10 @@ const VisualizacaoBarbearia = () => {
 
 
     return (
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 0 20px 0', backgroundColor: '#fff', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
+        <div style={{ maxWidth: MAX_WIDTH, margin: '0 auto', padding: '0 0 20px 0', backgroundColor: '#fff', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
             
             {/* Informações de Cabeçalho da Barbearia */}
-            <div style={{ padding: '20px', backgroundColor: primaryColor, color: 'white', position: 'relative' }}>
+            <div style={{ padding: '20px', backgroundColor: PRIMARY_COLOR, color: 'white', position: 'relative' }}>
                 <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', position: 'absolute', top: '20px', left: '20px', fontSize: '1.5em' }}>
                     <FaChevronLeft />
                 </button>
@@ -248,7 +282,7 @@ const VisualizacaoBarbearia = () => {
                     </div>
                     
                     <h1 style={{ margin: '0', fontSize: '1.8em' }}>{nome_barbearia}</h1>
-                    <p style={{ margin: '5px 0 0 0', fontSize: '1em', color: accentColor }}>
+                    <p style={{ margin: '5px 0 0 0', fontSize: '1em', color: ACCENT_COLOR }}>
                         <FaStar size={12} /> {notaMedia} ({totalAvaliacoes})
                     </p>
                     <p style={{ margin: '5px 0 0 0', fontSize: '0.9em' }}>

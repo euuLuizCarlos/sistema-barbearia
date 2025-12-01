@@ -1996,21 +1996,14 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
 
 
 
-// server.js (Nova Rota: GET /agendamentos/data)
-
-// server.js (Modifique a rota GET /agendamentos/data)
-
-// server.js (Adicionar esta rota ao seu código)
-
-// server.js (ADICIONAR ROTA: GET /agendamentos/data)
+// server.js (MODIFIQUE ESTA ROTA)
 
 app.get('/agendamentos/data', authenticateToken, async (req, res) => {
     let barbeiro_id = req.user.id;
-    let { data } = req.query; 
+    let { data } = req.query; 
 
-    // Garante que 'data' tem um valor padrão, se não for fornecido.
     if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
-        data = new Date().toISOString().substring(0, 10); 
+        data = new Date().toISOString().substring(0, 10); 
     }
 
     try {
@@ -2018,32 +2011,45 @@ app.get('/agendamentos/data', authenticateToken, async (req, res) => {
             SELECT
                 A.id, A.data_hora_inicio, A.data_hora_fim, A.status, A.valor_servico, A.observacao, A.preferencia, A.motivo_cancelamento, A.cancelado_por,
                 C.nome AS nome_cliente,
+                C.foto_perfil AS foto_cliente_path,
                 S.nome AS nome_servico,
                 
-                -- 🚨 CÁLCULO DA REPUTAÇÃO DO CLIENTE 🚨
+                -- CÁLCULO DA REPUTAÇÃO DO CLIENTE 
                 (
-                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
+                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
                     FROM agendamentos
                     WHERE cliente_id = A.cliente_id
                       AND avaliacao_cliente_nota IS NOT NULL
-                      AND status = 'concluido' 
+                      AND status = 'concluido' 
                 ) AS media_avaliacao_cliente
                 
             FROM agendamentos A
             JOIN clientes C ON A.cliente_id = C.id
             JOIN servicos S ON A.servico_id = S.id
             WHERE A.barbeiro_id = ?
-              AND DATE(A.data_hora_inicio) = ? 
+              AND DATE(A.data_hora_inicio) = ? 
             ORDER BY A.status = 'agendado' DESC, A.data_hora_inicio ASC
         `;
         
         const [agendamentos] = await db.query(sql, [barbeiro_id, data]);
 
-        return res.json(agendamentos);
+        // 🚨 BLOCO NOVO: CONSTRUÇÃO DA URL COMPLETA DA FOTO DO CLIENTE 🚨
+        const agendamentosFormatados = agendamentos.map(ag => {
+            const foto_url = ag.foto_cliente_path 
+                ? `http://localhost:3000${ag.foto_cliente_path}`
+                : null; // Se não tiver foto, é null
+                
+            return {
+                ...ag,
+                foto_cliente_url: foto_url,
+            };
+        });
+
+        return res.json(agendamentosFormatados);
 
     } catch (error) {
-        console.error("ERRO CRÍTICO NA BUSCA DE AGENDA COM REPUTAÇÃO:", error);
-        return res.status(500).json({ error: "Erro interno ao buscar agenda com reputação." });
+        console.error("ERRO CRÍTICO NA BUSCA DE AGENDA COM FOTO:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agenda com foto." });
     }
 });
 
@@ -2537,6 +2543,7 @@ app.post('/avaliar-barbeiro', authenticateToken, async (req, res) => {
 });
 
 // server.js (ADICIONAR NOVA ROTA)
+// server.js (MODIFICAR ROTA: GET /avaliacoes/barbeiro/:barbeiroId/detalhes)
 
 app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
     const { barbeiroId } = req.params;
@@ -2548,6 +2555,7 @@ app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
                 av.observacao, 
                 av.data_avaliacao,
                 c.nome AS nome_cliente,
+                c.foto_perfil AS foto_cliente_path,
                 s.nome AS nome_servico
             FROM avaliacoes_barbeiros av
             JOIN clientes c ON av.cliente_id = c.id
@@ -2559,18 +2567,21 @@ app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
         
         const [avaliacoes] = await db.query(sql, [barbeiroId]);
         
-        // Também calculamos a média geral para o cabeçalho, caso o frontend precise
-        const sqlMedia = `
-            SELECT ROUND(AVG(nota), 1) AS media_geral, COUNT(id) AS total_avaliacoes
-            FROM avaliacoes_barbeiros
-            WHERE barbeiro_id = ?
-        `;
+        // Calculamos a média geral (mantido)
+        const sqlMedia = `SELECT ROUND(AVG(nota), 1) AS media_geral, COUNT(id) AS total_avaliacoes FROM avaliacoes_barbeiros WHERE barbeiro_id = ?`;
         const [media] = await db.query(sqlMedia, [barbeiroId]);
+        
+        // 🚨 BLOCO NOVO: CONSTRUÇÃO DA URL DA FOTO PARA O FRONTEND
+        const avaliacoesFormatadas = avaliacoes.map(avaliacao => ({
+            ...avaliacao,
+            // Constrói a URL completa para ser exibida
+            foto_cliente_url: avaliacao.foto_cliente_path ? `http://localhost:3000${avaliacao.foto_cliente_path}` : null,
+        }));
         
         return res.json({
             mediaGeral: media[0].media_geral || '0.0',
             totalAvaliacoes: media[0].total_avaliacoes,
-            comentarios: avaliacoes
+            comentarios: avaliacoesFormatadas // Usa a lista com as URLs completas
         });
 
     } catch (error) {
@@ -2578,7 +2589,6 @@ app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
         return res.status(500).json({ error: "Erro interno ao buscar avaliações." });
     }
 });
-
 
 
 // server.js (ADICIONAR NOVA ROTA: GET /agendamentos/ultimo)

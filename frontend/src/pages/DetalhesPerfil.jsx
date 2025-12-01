@@ -55,7 +55,7 @@ const DetalhesPerfil = () => {
     };
     
    const getPageTitle = () => {
-        return isBarbeiro ? "Detalhes do Meu Perfil Profissional" : "Detalhes do Meu Perfil"; 
+        return isBarbeiro ? "Detalhes do Meu Perfil" : "Detalhes do Meu Perfil"; 
     };
 
     // --- FUNÇÃO DE BUSCA DE PERFIL (Principal) ---
