@@ -1669,8 +1669,9 @@ app.delete('/agendamentos/:id', authenticateToken, (req, res) => { res.status(50
 // Funcionalidade: Busca barbearias ativas por nome, barbearia ou localidade
 // server.js (Modifique a rota GET /barbearias/busca)
 
+// server.js (MODIFIQUE ESTA ROTA)
+
 app.get('/barbearias/busca', async (req, res) => {
-    // O parâmetro 'query' é opcional para filtrar por nome/local
     const { query } = req.query; 
 
     try {
@@ -1679,12 +1680,14 @@ app.get('/barbearias/busca', async (req, res) => {
                 b.id AS barbeiro_id, 
                 pb.nome_barbearia,
                 pb.rua,
+                pb.numero,
+                pb.bairro,
                 pb.localidade,
                 pb.uf,
-                b.foto_perfil,
                 b.nome AS nome_barbeiro,
+                b.foto_perfil, -- 🚨 CAMPO ADICIONADO/VERIFICADO
                 
-                -- 🚨 NOVO CÁLCULO: MÉDIA DE AVALIAÇÕES DO BARBEIRO 🚨
+                -- Cálculo da média de avaliação (Mantido)
                 (
                     SELECT ROUND(AVG(nota), 1)
                     FROM avaliacoes_barbeiros 
@@ -1698,7 +1701,7 @@ app.get('/barbearias/busca', async (req, res) => {
         `;
         const params = [];
         
-        // Adiciona a cláusula de busca se a query estiver presente
+        // Adiciona a cláusula de busca (mantida)
         if (query) {
             const searchQuery = `%${query}%`;
             sql += ` AND (pb.nome_barbearia LIKE ? OR b.nome LIKE ? OR pb.localidade LIKE ?)`;
@@ -1709,18 +1712,20 @@ app.get('/barbearias/busca', async (req, res) => {
 
         const [barbearias] = await db.query(sql, params);
 
-        // Processa os dados para adicionar a URL completa da foto e a nota
+        // 🚨 NOVO BLOCO: CONSTRUÇÃO DA URL PÚBLICA E LIMPEZA DE DADOS
         const barbeariasFormatadas = barbearias.map(barbearia => ({
             ...barbearia,
+            // 💡 CONSTRUÇÃO DA URL COMPLETA
             foto_url: barbearia.foto_perfil ? `http://localhost:3000${barbearia.foto_perfil}` : null,
-            // Garante que a média seja 0.0 se for null (sem avaliações)
-            media_avaliacao_barbeiro: barbearia.media_avaliacao_barbeiro || '0.0'
+            media_avaliacao_barbeiro: barbearia.media_avaliacao_barbeiro || '0.0',
+            // Adicionando o nome simples para fallback caso o nome da barbearia seja nulo
+            nome: barbearia.nome_barbearia || barbearia.nome,
         }));
 
         return res.json(barbeariasFormatadas);
 
     } catch (error) {
-        console.error("Erro ao buscar barbearias (com avaliação):", error);
+        console.error("Erro ao buscar barbearias (com foto):", error);
         return res.status(500).json({ error: "Erro interno ao buscar barbearias." });
     }
 });
@@ -2225,26 +2230,33 @@ app.get('/perfil/documento-exists', async (req, res) => {
 });
 
 // Rota: GET /perfil/cliente - Retorna os dados do cliente logado
+
+
+// server.js (MODIFIQUE A ROTA: GET /perfil/cliente)
+
 app.get('/perfil/cliente', authenticateToken, async (req, res) => {
     const cliente_id = req.user.id;
+    
     try {
-        // Verifica se a coluna 'documento' existe na tabela 'clientes' do schema atual
-        const [colCheck] = await db.query(
-            `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'clientes' AND COLUMN_NAME = 'documento'`,
-            [process.env.DB_NAME]
-        );
-        const hasDocumento = colCheck && colCheck[0] && colCheck[0].cnt > 0;
-
-        const sql = hasDocumento
-            ? 'SELECT id, nome, email, telefone, documento FROM clientes WHERE id = ?'
-            : 'SELECT id, nome, email, telefone FROM clientes WHERE id = ?';
-
+        // 🚨 O SQL DEVE OBRIGATORIAMENTE INCLUIR 'foto_perfil'
+        const sql = 'SELECT id, nome, email, telefone, documento, foto_perfil FROM clientes WHERE id = ?';
+        
         const [rows] = await db.query(sql, [cliente_id]);
         if (!rows || rows.length === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
-        // Se não existir documento, garantimos que o campo esteja presente com null para o frontend
+        
         const row = rows[0];
-        if (!hasDocumento) row.documento = null;
-        return res.json({ data: row });
+
+        // Construção da URL completa para o frontend
+        const foto_perfil_path = row.foto_perfil ? `http://localhost:3000${row.foto_perfil}` : null;
+        
+        // Retorna todos os dados, incluindo a URL da foto
+        return res.json({ 
+            data: {
+                ...row,
+                foto_url: foto_perfil_path // Este campo alimenta o fotoUrl do frontend
+            }
+        });
+        
     } catch (err) {
         console.error('Erro ao buscar perfil do cliente:', err);
         return res.status(500).json({ error: 'Erro interno ao buscar perfil do cliente.' });
@@ -2571,6 +2583,8 @@ app.get('/avaliacoes/barbeiro/:barbeiroId/detalhes', async (req, res) => {
 
 // server.js (ADICIONAR NOVA ROTA: GET /agendamentos/ultimo)
 
+// server.js (MODIFIQUE ESTA ROTA)
+
 app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
     const cliente_id = req.user.id;
     
@@ -2578,6 +2592,7 @@ app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
         const sql = `
             SELECT 
                 A.data_hora_inicio AS data_agendamento,
+                A.status, -- <---- LINHA ADICIONADA/MODIFICADA
                 S.nome AS servico_nome,
                 PB.nome_barbearia
             FROM agendamentos A
@@ -2592,14 +2607,79 @@ app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
         const [result] = await db.query(sql, [cliente_id]);
 
         if (result.length === 0) {
-            return res.json(null); // Retorna nulo se não houver agendamentos
+            return res.json(null);
         }
 
-        // Renomeamos a coluna no backend para "data_agendamento" para simplificar o frontend
         return res.json(result[0]);
 
     } catch (error) {
         console.error("Erro ao buscar último agendamento:", error);
         return res.status(500).json({ error: "Erro interno ao buscar o último agendamento." });
     }
+});
+
+// server.js (ADICIONAR NOVA ROTA PARA UPLOAD DE FOTO DO CLIENTE)
+
+app.put('/perfil/cliente/foto', authenticateToken, (req, res) => {
+    
+    const cliente_id = req.user.id; 
+    
+    // 1. Executa o middleware Multer para processar o arquivo
+    upload(req, res, async (err) => {
+        
+        // Trata erros do Multer (ex: arquivo muito grande)
+        if (err instanceof multer.MulterError) {
+            console.error("Erro Multer:", err.message);
+            return res.status(500).json({ error: "Erro no upload: " + err.message });
+        } else if (err) {
+            console.error("Erro de Upload Desconhecido:", err);
+            return res.status(500).json({ error: "Erro desconhecido durante o upload." });
+        }
+
+        if (!req.file) {
+             return res.status(400).json({ error: "Nenhuma foto enviada." });
+        }
+
+        let fotoPath = null;
+        let oldPath = req.file.path; 
+        let newPath = null; 
+        
+        try {
+            // 🚨 CONSTRUÇÃO DO CAMINHO: foto-CLIENTEID-timestamp.ext
+            const oldFilename = req.file.filename;
+            const filenameWithId = `foto-cliente-${cliente_id}-${oldFilename}`;
+            newPath = path.join(uploadsDir, filenameWithId); 
+            
+            fs.renameSync(oldPath, newPath);
+            fotoPath = `/uploads/${filenameWithId}`; // Caminho RELATIVO para o DB
+
+            // 2. Lógica Opcional: Deletar foto antiga (se houver)
+            const [oldPhotoRow] = await db.query('SELECT foto_perfil FROM clientes WHERE id = ?', [cliente_id]);
+            const oldPhotoPath = oldPhotoRow?.[0]?.foto_perfil;
+            if (oldPhotoPath && oldPhotoPath !== fotoPath) {
+                const fullPath = path.join(__dirname, oldPhotoPath);
+                if (fs.existsSync(fullPath)) { 
+                    fs.unlinkSync(fullPath); 
+                }
+            }
+            
+            // 3. Query para atualizar a coluna foto_perfil no DB
+            const sql = 'UPDATE clientes SET foto_perfil = ? WHERE id = ?';
+            await db.query(sql, [fotoPath, cliente_id]);
+
+            return res.status(200).json({ 
+                message: "Foto de perfil atualizada com sucesso!",
+                // 🚨 GARANTIR QUE RETORNA O PATH RELATIVO ORIGINAL!
+                foto_perfil_url: fotoPath 
+            });;
+
+        } catch (error) {
+            // Se falhar no DB, tenta deletar o arquivo renomeado para limpeza
+            if (newPath && fs.existsSync(newPath)) {
+                fs.unlink(newPath, () => { }); 
+            }
+            console.error("Erro ao atualizar DB com a foto do cliente:", error);
+            return res.status(500).json({ error: "Erro interno ao atualizar perfil." });
+        }
+    });
 });
