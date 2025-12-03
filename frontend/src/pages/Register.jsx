@@ -58,6 +58,29 @@ const Register = () => {
         fontWeight: 'bold', 
         cursor: 'pointer' 
     };
+    const errorBadgeStyle = {
+        position: 'absolute',
+        right: '8px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        background: '#FFEB3B',
+        color: '#023047',
+        padding: '6px 8px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+        fontSize: '0.85em',
+        zIndex: 3,
+        maxWidth: '70%'
+    };
+    const requiredAsteriskStyle = {
+        position: 'absolute',
+        left: '8px',
+        top: '-8px',
+        color: 'red',
+        fontWeight: '700',
+        fontSize: '1em',
+        lineHeight: '1'
+    };
 
 
     if (!userType || (userType !== 'barbeiro' && userType !== 'cliente')) {
@@ -67,6 +90,7 @@ const Register = () => {
     const [message, setMessage] = useState('');
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
+    const [telefoneError, setTelefoneError] = useState('');
     const [documentoExists, setDocumentoExists] = useState(false);
     const [documentoChecking, setDocumentoChecking] = useState(false);
     const [documentoError, setDocumentoError] = useState('');
@@ -85,6 +109,7 @@ const Register = () => {
         if (name === 'email' && emailError) setEmailError('');
         if (name === 'password' && passwordError) setPasswordError('');
         if (name === 'documento' && documentoError) setDocumentoError('');
+        if (name === 'telefone' && telefoneError) setTelefoneError('');
         if (files && files.length > 0) {
             const file = files[0];
             setFormData(f => ({ ...f, [name]: file }));
@@ -320,9 +345,21 @@ const Register = () => {
             let response;
 
             if (userType === 'cliente') {
+                // Campos obrigatórios para cliente
+                const requiredCliente = ['nome', 'email', 'password', 'documento', 'telefone'];
+                for (const key of requiredCliente) {
+                    if (!formData[key] || String(formData[key]).trim() === '') {
+                        if (key === 'documento') setDocumentoError('CPF obrigatório.');
+                        if (key === 'telefone') setTelefoneError('Telefone obrigatório.');
+                        setMessage('Preencha todos os campos obrigatórios.');
+                        return;
+                    }
+                }
+
                 const cleanedDocumento = (formData.documento || '').replace(/\D/g, '');
-                if (cleanedDocumento && !isValidCPF(cleanedDocumento)) {
-                    setMessage('CPF inválido. Verifique os dígitos.');
+                if (!isValidCPF(cleanedDocumento)) {
+                    setDocumentoError('CPF inválido. Verifique os dígitos.');
+                    setMessage('Corrija os erros no formulário.');
                     return;
                 }
 
@@ -423,12 +460,31 @@ const Register = () => {
             <h2 style={{ margin: '0', fontSize: '1.5em', color: '#FFB703' }}>Registro como {userType.toUpperCase()}</h2>
             <p style={{ margin: '5px 0 30px 0', fontSize: '0.9em', color: '#ccc' }}>Crie sua conta {userType} agora.</p>
 
-            <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={inputBaseStyle} />
-            <input type="email" name="email" value={formData.email} onChange={handleChange} onBlur={() => {}} placeholder="Email" required style={inputBaseStyle} />
-            {/* Mensagens de Erro (Email) */}
-            {/* {emailError && ...} */}
+            <div style={{ position: 'relative', marginBottom: '15px' }}>
+                <span style={requiredAsteriskStyle}>*</span>
+                <input type="text" name="nome" value={formData.nome} onChange={handleChange} placeholder="Nome Completo" required style={{ ...inputBaseStyle, marginBottom: 0 }} />
+            </div>
+            <div style={{ position: 'relative', marginBottom: '20px' }}>
+                <span style={requiredAsteriskStyle}>*</span>
+                <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    onBlur={handleEmailBlur}
+                    placeholder="Email"
+                    required
+                    style={{ ...inputBaseStyle, marginBottom: 0 }}
+                />
+                {emailError && (
+                    <div style={{ ...errorBadgeStyle, right: '8px', top: 'calc(100% + 8px)', transform: 'none', position: 'relative', marginTop: '6px' }}>
+                        {emailError}
+                    </div>
+                )}
+            </div>
             
             <div style={{ position: 'relative', marginBottom: '20px' }}>
+                <span style={requiredAsteriskStyle}>*</span>
                 <input
                     type={showPassword ? 'text' : 'password'}
                     name="password"
@@ -439,41 +495,93 @@ const Register = () => {
                     style={{ ...inputBaseStyle, paddingRight: '40px', marginBottom: '0', boxSizing: 'border-box' }}
                 />
                 <ShowPasswordToggle show={showPassword} onToggle={() => setShowPassword(s => !s)} ariaLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} />
+                {passwordError && (
+                    <div style={{ ...errorBadgeStyle, right: '8px', top: 'calc(100% + 8px)', transform: 'none', position: 'relative', marginTop: '6px' }}>
+                        {passwordError}
+                    </div>
+                )}
             </div>
-            {/* {passwordError && ...} */}
 
             {userType === 'cliente' && (
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
                     <h3 style={{ marginTop: 0, color: '#023047' }}>Dados Pessoais</h3>
-                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={() => {}} placeholder="CPF" style={inputBaseStyle} />
-                    {/* {documentoChecking && ...} */}
-                    {/* {documentoError && ...} */}
-                    <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={inputBaseStyle} />
+                    <div style={{ position: 'relative', marginBottom: '12px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF" style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                        {documentoChecking && (
+                            <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.85em', color: '#777' }}>
+                                Verificando...
+                            </div>
+                        )}
+                    </div>
+                    {documentoError && (
+                        <div style={{ ...errorBadgeStyle, marginTop: '6px' }}>{documentoError}</div>
+                    )}
+                    <div style={{ position: 'relative', marginTop: '8px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                        {telefoneError && (
+                            <div style={{ ...errorBadgeStyle, marginTop: '6px' }}>{telefoneError}</div>
+                        )}
+                    </div>
                 </div>
             )}
 
             {userType === 'barbeiro' && (
                 <div style={{ marginTop: '10px', background: '#fff', padding: '12px', borderRadius: '8px' }}>
                     <h3 style={{ marginTop: 0, color: '#023047' }}>Dados da Barbearia</h3>
-                    <input type="text" name="nome_barbearia" value={formData.nome_barbearia} onChange={handleChange} placeholder="Nome da Barbearia" required style={inputBaseStyle} />
-                    <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={() => {}} placeholder="CPF/CNPJ" required style={inputBaseStyle} />
-                    {/* {documentoChecking && ...} */}
-                    {/* {documentoError && ...} */}
-                    <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" required style={inputBaseStyle} />
+                    <div style={{ position: 'relative', marginBottom: '12px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="nome_barbearia" value={formData.nome_barbearia} onChange={handleChange} placeholder="Nome da Barbearia" required style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                    </div>
+                    <div style={{ position: 'relative', marginBottom: '12px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="documento" value={formData.documento} onChange={handleChange} onBlur={handleDocumentoBlur} placeholder="CPF/CNPJ" required style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                        {documentoChecking && (
+                            <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.85em', color: '#777' }}>
+                                Verificando...
+                            </div>
+                        )}
+                    </div>
+                    {documentoError && (
+                        <div style={{ ...errorBadgeStyle, marginTop: '6px' }}>{documentoError}</div>
+                    )}
+                    <div style={{ position: 'relative', marginBottom: '15px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" required style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                    </div>
                     
                     {/* LINHA 1: CEP e Número */}
                     <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                        <input type="text" name="cep" value={formData.cep} onChange={handleChange} onBlur={handleCepBlur} placeholder="CEP" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
-                        <input type="text" name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" required style={{ ...inputBaseStyle, flex: '1', marginBottom: '15px' }} />
+                        <div style={{ position: 'relative', flex: '2', marginBottom: '15px' }}>
+                            <span style={requiredAsteriskStyle}>*</span>
+                            <input type="text" name="cep" value={formData.cep} onChange={handleChange} onBlur={handleCepBlur} placeholder="CEP" required style={{ ...inputBaseStyle, width: '100%', marginBottom: 0 }} />
+                        </div>
+                        <div style={{ position: 'relative', flex: '1', marginBottom: '15px' }}>
+                            <span style={requiredAsteriskStyle}>*</span>
+                            <input type="text" name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" required style={{ ...inputBaseStyle, width: '100%', marginBottom: 0 }} />
+                        </div>
                     </div>
                     
-                    <input type="text" name="rua" value={formData.rua} onChange={handleChange} placeholder="Rua" required style={inputBaseStyle} />
+                    <div style={{ position: 'relative', marginBottom: '15px' }}>
+                        <span style={requiredAsteriskStyle}>*</span>
+                        <input type="text" name="rua" value={formData.rua} onChange={handleChange} placeholder="Rua" required style={{ ...inputBaseStyle, marginBottom: 0 }} />
+                    </div>
                     
                     {/* LINHA 2: Bairro, Cidade, UF */}
                     <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                        <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
-                        <input type="text" name="localidade" value={formData.localidade} onChange={handleChange} placeholder="Cidade" required style={{ ...inputBaseStyle, flex: '2', marginBottom: '15px' }} />
-                        <input type="text" name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" required style={{ ...inputBaseStyle, flex: '1', marginBottom: '15px' }} />
+                        <div style={{ position: 'relative', flex: '2', marginBottom: '15px' }}>
+                            <span style={requiredAsteriskStyle}>*</span>
+                            <input type="text" name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" required style={{ ...inputBaseStyle, width: '100%', marginBottom: 0 }} />
+                        </div>
+                        <div style={{ position: 'relative', flex: '2', marginBottom: '15px' }}>
+                            <span style={requiredAsteriskStyle}>*</span>
+                            <input type="text" name="localidade" value={formData.localidade} onChange={handleChange} placeholder="Cidade" required style={{ ...inputBaseStyle, width: '100%', marginBottom: 0 }} />
+                        </div>
+                        <div style={{ position: 'relative', flex: '1', marginBottom: '15px' }}>
+                            <span style={requiredAsteriskStyle}>*</span>
+                            <input type="text" name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" required style={{ ...inputBaseStyle, width: '100%', marginBottom: 0 }} />
+                        </div>
                     </div>
                     
                     <input type="text" name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (opcional)" style={inputBaseStyle} />
