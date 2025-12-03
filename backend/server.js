@@ -2070,6 +2070,124 @@ app.get('/agendamentos/data', authenticateToken, async (req, res) => {
 });
 
 
+
+// Rota: GET /agendamentos/todos
+// Retorna todos os agendamentos do barbeiro logado (sem filtro por data)
+app.get('/agendamentos/todos', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+
+    try {
+        const sql = `
+            SELECT
+                A.id, A.data_hora_inicio, A.data_hora_fim, A.status, A.valor_servico, A.observacao, A.preferencia, A.motivo_cancelamento, A.cancelado_por,
+                C.nome AS nome_cliente,
+                C.foto_perfil AS foto_cliente_path,
+                S.nome AS nome_servico,
+                B.nome AS nome_barbeiro,
+                (
+                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1)
+                    FROM agendamentos
+                    WHERE cliente_id = A.cliente_id
+                      AND avaliacao_cliente_nota IS NOT NULL
+                      AND status = 'concluido'
+                ) AS media_avaliacao_cliente
+            FROM agendamentos A
+            JOIN clientes C ON A.cliente_id = C.id
+            JOIN servicos S ON A.servico_id = S.id
+            JOIN barbeiros B ON A.barbeiro_id = B.id
+            WHERE A.barbeiro_id = ?
+            ORDER BY A.data_hora_inicio ASC
+        `;
+
+        const [agendamentos] = await db.query(sql, [barbeiro_id]);
+
+        const agendamentosFormatados = agendamentos.map(ag => {
+            // Converte data/hora para string YYYY-MM-DD HH:MM:SS para evitar timezone issues
+            const dataInicio = ag.data_hora_inicio instanceof Date 
+                ? ag.data_hora_inicio.toISOString().slice(0, 19).replace('T', ' ')
+                : String(ag.data_hora_inicio);
+            const dataFim = ag.data_hora_fim instanceof Date
+                ? ag.data_hora_fim.toISOString().slice(0, 19).replace('T', ' ')
+                : String(ag.data_hora_fim);
+            
+            return {
+                ...ag,
+                data_hora_inicio: dataInicio,
+                data_hora_fim: dataFim,
+                foto_cliente_url: ag.foto_cliente_path ? `http://localhost:3000${ag.foto_cliente_path}` : null
+            };
+        });
+
+        return res.json(agendamentosFormatados);
+
+    } catch (error) {
+        console.error("Erro ao listar todos os agendamentos do barbeiro:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agendamentos." });
+    }
+});
+
+// Rota: GET /agendamentos/todos/:barbeiroId
+// Permite que um admin (ou o próprio barbeiro) consulte todos os agendamentos de um barbeiro específico
+app.get('/agendamentos/todos/:barbeiroId', authenticateToken, async (req, res) => {
+    const { barbeiroId } = req.params;
+    const userType = req.user.tipo;
+    const userId = req.user.id;
+
+    if (userType !== 'admin' && String(userId) !== String(barbeiroId)) {
+        return res.status(403).json({ error: 'Acesso negado. Apenas admin ou o próprio barbeiro pode acessar.' });
+    }
+
+    try {
+        const sql = `
+            SELECT
+                A.id, A.data_hora_inicio, A.data_hora_fim, A.status, A.valor_servico, A.observacao, A.preferencia, A.motivo_cancelamento, A.cancelado_por,
+                C.nome AS nome_cliente,
+                C.foto_perfil AS foto_cliente_path,
+                S.nome AS nome_servico,
+                B.nome AS nome_barbeiro,
+                (
+                    SELECT ROUND(AVG(avaliacao_cliente_nota), 1)
+                    FROM agendamentos
+                    WHERE cliente_id = A.cliente_id
+                      AND avaliacao_cliente_nota IS NOT NULL
+                      AND status = 'concluido'
+                ) AS media_avaliacao_cliente
+            FROM agendamentos A
+            JOIN clientes C ON A.cliente_id = C.id
+            JOIN servicos S ON A.servico_id = S.id
+            JOIN barbeiros B ON A.barbeiro_id = B.id
+            WHERE A.barbeiro_id = ?
+            ORDER BY A.data_hora_inicio ASC
+        `;
+
+        const [agendamentos] = await db.query(sql, [barbeiroId]);
+
+        const agendamentosFormatados = agendamentos.map(ag => {
+            // Converte data/hora para string YYYY-MM-DD HH:MM:SS para evitar timezone issues
+            const dataInicio = ag.data_hora_inicio instanceof Date 
+                ? ag.data_hora_inicio.toISOString().slice(0, 19).replace('T', ' ')
+                : String(ag.data_hora_inicio);
+            const dataFim = ag.data_hora_fim instanceof Date
+                ? ag.data_hora_fim.toISOString().slice(0, 19).replace('T', ' ')
+                : String(ag.data_hora_fim);
+            
+            return {
+                ...ag,
+                data_hora_inicio: dataInicio,
+                data_hora_fim: dataFim,
+                foto_cliente_url: ag.foto_cliente_path ? `http://localhost:3000${ag.foto_cliente_path}` : null
+            };
+        });
+
+        return res.json(agendamentosFormatados);
+
+    } catch (error) {
+        console.error("Erro ao listar agendamentos do barbeiro especificado:", error);
+        return res.status(500).json({ error: "Erro interno ao buscar agendamentos." });
+    }
+});
+
+
 // Exemplo de rota de POST para o Backend (A ser adicionada no Server.js)
 
 // Rota POST /blocked-dates

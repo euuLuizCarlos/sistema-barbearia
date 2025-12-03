@@ -1,7 +1,7 @@
 // src/pages/Agenda.jsx
 
 import React, { useState } from 'react';
-import ListaAgendamentos from '../components/Agendamento/ListaAgendamentos'; 
+import ListaAgendamentosTodos from '../components/Agendamento/ListaAgendamentosTodos'; 
 import { FaCalendarAlt, FaSync } from 'react-icons/fa';
 
 const Agenda = () => {
@@ -26,8 +26,8 @@ const Agenda = () => {
                 </button>
             </h1>
             
-            {/* O componente ListaAgendamentos busca os dados do barbeiro logado */}
-            <ListaAgendamentos key={refreshKey} /> 
+            {/* O componente ListaAgendamentosTodos busca todos os agendamentos do barbeiro logado */}
+            <ListaAgendamentosTodos key={refreshKey} refreshKey={refreshKey} /> 
         </div>
     );
 };
