@@ -6,7 +6,8 @@ import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useUi } from '../contexts/UiContext'; 
 import { FaUserCircle, FaEnvelope, FaPhone, FaIdCard, FaSpinner, FaTools, FaBuilding, FaCamera } from 'react-icons/fa';
-import ExclusaoConta from '../components/Configuracoes/ExclusaoConta'; 
+import ExclusaoConta from '../components/Configuracoes/ExclusaoConta';
+import TermosDeUso from '../components/TermosDeUso'; 
 
 // Definindo cores localmente
 const PRIMARY_COLOR = '#023047';
@@ -28,6 +29,7 @@ const DetalhesPerfil = () => {
     const [uploading, setUploading] = useState(false); 
     const [fotoUrl, setFotoUrl] = useState(null); 
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [mostrarTermos, setMostrarTermos] = useState(false);
 
     // --- FUNÇÕES DE MÁSCARA E FORMATAÇÃO (Implemente suas máscaras aqui) ---
     const maskDocumento = (value) => { 
@@ -230,10 +232,36 @@ const DetalhesPerfil = () => {
                 )}
             </div>
 
+            {/* OPÇÃO DE VISUALIZAR TERMOS DE USO */}
+            <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#f0f7ff', border: `1px solid ${ACCENT_COLOR}`, borderRadius: '8px' }}>
+                <h3 style={{ marginTop: 0, color: PRIMARY_COLOR }}>📄 Termos de Uso e Privacidade</h3>
+                <p style={{ marginBottom: '15px', color: '#555' }}>
+                    Clique no botão abaixo para visualizar os Termos de Uso e nossa Política de Privacidade (LGPD).
+                </p>
+                <button
+                    onClick={() => setMostrarTermos(true)}
+                    style={{
+                        padding: '12px 20px',
+                        backgroundColor: ACCENT_COLOR,
+                        color: PRIMARY_COLOR,
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '14px'
+                    }}
+                >
+                    Leia os Termos de Uso
+                </button>
+            </div>
+
             {/* OPÇÃO DE EXCLUSÃO DE CONTA */}
             <div style={{ marginTop: '30px' }}>
                 <ExclusaoConta /> 
             </div>
+
+            {/* MODAL DE TERMOS DE USO */}
+            {mostrarTermos && <TermosDeUso onClose={() => setMostrarTermos(false)} />}
 
             <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .spinner { animation: spin 1s linear infinite; }`}</style>
         </div>

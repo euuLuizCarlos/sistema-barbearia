@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import ConfiguracaoTaxaMaquininha from "../components/ControleCaixa/ConfiguracaoTaxaMaquininha";
 // 🚨 CAMINHO CORRIGIDO: Assume que o arquivo está em src/components/Configuracoes
 import GerenciarDiasBloqueados from "../components/Configuracoes/GerenciarDiasBloqueados.jsx"; 
+import TermosDeUso from "../components/TermosDeUso.jsx"; 
 
 
 const PRIMARY_COLOR = '#023047';
@@ -12,7 +13,8 @@ const ACCENT_COLOR = '#FFB703';
 
 const Configuracoes = () => {
     // 💡 ESTADO: Qual seção deve ser exibida? ('taxa', 'bloqueios', ou null)
-    const [secaoAtiva, setSecaoAtiva] = useState(null); 
+    const [secaoAtiva, setSecaoAtiva] = useState(null);
+    const [mostrarTermos, setMostrarTermos] = useState(false); 
     
     // --- FUNÇÃO AUXILIAR PARA RENDERIZAÇÃO ---
     const renderSecao = () => {
@@ -56,7 +58,7 @@ const Configuracoes = () => {
             </h1>
             
             {/* 💡 CONTROLES DE NAVEGAÇÃO SUPERIOR (Botões Clicáveis) */}
-            <div style={{ display: 'flex', marginBottom: '30px', marginTop: '30px' }}>
+            <div style={{ display: 'flex', marginBottom: '30px', marginTop: '30px', flexWrap: 'wrap', gap: '10px' }}>
                 
                 <div 
                     style={linkStyle(secaoAtiva === 'bloqueios')} 
@@ -71,6 +73,13 @@ const Configuracoes = () => {
                 >
                     <span style={{ fontSize: '1.2em' }}>💳</span> Configuração da Taxa
                 </div>
+
+                <div 
+                    style={linkStyle(false)} 
+                    onClick={() => setMostrarTermos(true)}
+                >
+                    <span style={{ fontSize: '1.2em' }}>📄</span> Termos de Uso
+                </div>
                 
             </div>
             
@@ -80,6 +89,9 @@ const Configuracoes = () => {
             <div style={{ paddingTop: '20px' }}>
                 {renderSecao()}
             </div>
+
+            {/* 💡 MODAL DE TERMOS DE USO */}
+            {mostrarTermos && <TermosDeUso onClose={() => setMostrarTermos(false)} />}
             
         </div>
     );
