@@ -19,13 +19,30 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
     
     const [valorCobrado, setValorCobrado] = useState(parseFloat(agendamento.valor_servico || 0));
     const [formaPagamento, setFormaPagamento] = useState('dinheiro');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState('');
+    const [taxaMaquininha, setTaxaMaquininha] = useState(0);
     
     // ESTADOS PARA A AVALIAÇÃO DO CLIENTE
     // 💡 NOTA: O backend espera TINYINT(1), então mandamos um número.
     const [notaCliente, setNotaCliente] = useState(5); 
     const [obsCliente, setObsCliente] = useState('');
+    
+    // Buscar taxa da maquininha ao carregar o modal
+    useEffect(() => {
+        const fetchTaxa = async () => {
+            try {
+                const response = await api.get('/taxa-cartao');
+                setTaxaMaquininha(response.data.taxa || 0);
+            } catch (error) {
+                console.error("Erro ao buscar taxa:", error);
+                setTaxaMaquininha(0);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchTaxa();
+    }, []);
     
     // Efeito para garantir que o valor inicial seja válido
     useEffect(() => {
@@ -34,9 +51,10 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
         }
     }, [valorCobrado]);
 
-    // Cálculo da taxa (simulado para UX)
-    const taxaSimulada = formaPagamento === 'cartao' ? 0.025 : 0; 
-    const valorLiquidoEstimado = valorCobrado * (1 - taxaSimulada);
+    // Cálculo da taxa (AGORA USANDO A TAXA REAL DO BARBEIRO)
+    const taxaSimulada = formaPagamento === 'cartao' ? (taxaMaquininha / 100) : 0; 
+    const valorTaxaEstimado = valorCobrado * taxaSimulada;
+    const valorLiquidoEstimado = valorCobrado - valorTaxaEstimado;
     
     // Função auxiliar para renderizar estrelas
     const renderStars = (currentRating) => {
@@ -156,9 +174,11 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                 <div style={{ background: COLORS.BACKGROUND_LIGHT, padding: '10px', borderRadius: '5px', marginBottom: '20px' }}>
                     <p style={{ margin: '5px 0', fontWeight: 'bold', color: COLORS.SUCCESS }}>Receita Bruta: R$ {valorCobrado.toFixed(2)}</p>
                     {formaPagamento === 'cartao' && (
-                        <p style={{ margin: '5px 0', color: COLORS.ERROR }}>* Taxa de maquininha descontada: R$ {(valorCobrado - valorLiquidoEstimado).toFixed(2)}</p>
+                        <>
+                            <p style={{ margin: '5px 0', color: COLORS.ACCENT, fontWeight: 'bold' }}>Taxa de Maquininha ({taxaMaquininha.toFixed(2)}%): R$ {valorTaxaEstimado.toFixed(2)}</p>
+                        </>
                     )}
-                    <p style={{ margin: '5px 0' }}>**Entrada Líquida:** R$ {valorLiquidoEstimado.toFixed(2)}</p>
+                    <p style={{ margin: '5px 0', fontWeight: 'bold' }}>**Entrada Líquida:** R$ {valorLiquidoEstimado.toFixed(2)}</p>
                 </div>
 
                 {/* BOTÕES DE AÇÃO */}

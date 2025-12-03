@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { FaSave, FaClock, FaCalendarTimes, FaTrashAlt, FaCheck, FaMousePointer } from 'react-icons/fa'; 
+import { FaSave, FaClock, FaCalendarTimes, FaTrashAlt, FaCheck, FaMousePointer, FaEdit, FaTimes } from 'react-icons/fa'; 
 import { useUi } from '../contexts/UiContext';
 import ModalExclusaoHorarios from '../components/ControleCaixa/ModalExclusaoHorarios.jsx'; 
 
@@ -49,6 +49,8 @@ const GerenciarHorarios = () => {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedSlots, setSelectedSlots] = useState([]); // Array de IDs
     const [horarioToDelete, setHorarioToDelete] = useState(null); // Para modal de exclusão flexível
+    const [editingId, setEditingId] = useState(null); // Estado para rastrear qual horário está sendo editado
+    const [editForm, setEditForm] = useState({ hora_inicio: '', hora_fim: '' }); // Dados do horário sendo editado
     
     const [form, setForm] = useState({
         hora_inicio: '08:00',
@@ -290,6 +292,38 @@ const GerenciarHorarios = () => {
         }
     };
     
+    // --- FUNÇÕES DE EDIÇÃO DE HORÁRIO ---
+    const handleStartEdit = (horarioId, horaInicio, horaFim) => {
+        setEditingId(horarioId);
+        setEditForm({ hora_inicio: horaInicio, hora_fim: horaFim });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditForm({ hora_inicio: '', hora_fim: '' });
+    };
+
+    const handleSaveEdit = async (horarioId) => {
+        if (!editForm.hora_inicio || !editForm.hora_fim || editForm.hora_inicio >= editForm.hora_fim) {
+            ui.showPostIt('Verifique os horários. Hora de início deve ser anterior à hora de fim.', 'error');
+            return;
+        }
+
+        try {
+            await api.put(`/horarios/${horarioId}`, {
+                dia_semana: horarios.find(h => h.id === horarioId)?.dia_semana,
+                hora_inicio: editForm.hora_inicio,
+                hora_fim: editForm.hora_fim
+            });
+            ui.showPostIt('Horário atualizado com sucesso!', 'success');
+            setEditingId(null);
+            setEditForm({ hora_inicio: '', hora_fim: '' });
+            fetchHorarios();
+        } catch (error) {
+            ui.showPostIt(error.response?.data?.error || 'Erro ao atualizar horário', 'error');
+        }
+    };
+    
     // --- RENDERIZAÇÃO ---
     const cardStyleBase = { maxWidth: '1000px', margin: '30px auto', padding: '20px', backgroundColor: COLORS.BACKGROUND_LIGHT, borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' };
     const inputStyle = { width: '100%', padding: '10px', margin: '5px 0 15px 0', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' };
@@ -404,42 +438,100 @@ const GerenciarHorarios = () => {
                                     {/* Mapeia os slots */}
                                     {slots.map((s) => {
                                         const isSelected = selectedSlots.includes(s.id);
+                                        const isEditing = editingId === s.id;
                                         const slotCardStyle = {
                                             padding: '8px', 
                                             borderRadius: '4px', 
                                             marginBottom: '5px',
-                                            cursor: 'pointer',
-                                            backgroundColor: isSelected ? COLORS.ACCENT : 'transparent',
+                                            cursor: isSelectionMode ? 'pointer' : 'default',
+                                            backgroundColor: isSelected ? COLORS.ACCENT : (isEditing ? '#fff9e6' : 'transparent'),
                                             color: isSelected ? COLORS.PRIMARY : '#333',
-                                            border: isSelected ? `1px solid ${COLORS.PRIMARY}` : 'none',
+                                            border: isSelected ? `1px solid ${COLORS.PRIMARY}` : (isEditing ? `2px solid ${COLORS.ACCENT}` : 'none'),
                                             transition: 'background-color 0.2s',
                                         };
 
                                         return (
-                                            // ESTABILIDADE DO DOM: Layout Consistente
                                             <div 
                                                 key={s.id} 
                                                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9em', ...slotCardStyle }}
-                                                onClick={() => handleStartDelete(s.id, diaEnum, s.inicio, s.fim)} 
+                                                onClick={() => {
+                                                    if (isSelectionMode) handleStartDelete(s.id, diaEnum, s.inicio, s.fim);
+                                                }}
                                             >
-                                                <span style={{ display: 'flex', alignItems: 'center' }}>
-                                                    {/* Ícone de check (VISÍVEL APENAS em Modo de Seleção) */}
-                                                    {isSelectionMode && <FaCheck style={{ marginRight: '5px', color: isSelected ? COLORS.PRIMARY : COLORS.SECONDARY_TEXT }} />}
-                                                    {s.inicio} - {s.fim}
-                                                </span>
-                                                
-                                                {/* Contêiner da Ação (Estável no lado direito) */}
-                                                <div style={{ width: '30px', textAlign: 'right', flexShrink: 0 }}>
-                                                    {/* Botão de exclusão individual (SÓ APARECE FORA DO MODO DE SELEÇÃO) */}
-                                                    {!isSelectionMode && (
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleStartDelete(s.id, diaEnum, s.inicio, s.fim); }} 
-                                                            style={{ padding: '3px 8px', backgroundColor: COLORS.ERROR, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75em' }}
+                                                {isEditing ? (
+                                                    // Modo Edição
+                                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flex: 1 }}>
+                                                        <input
+                                                            type="time"
+                                                            value={editForm.hora_inicio}
+                                                            onChange={(e) => setEditForm({ ...editForm, hora_inicio: e.target.value })}
+                                                            style={{ padding: '4px', fontSize: '0.85em', borderRadius: '3px', border: '1px solid #ccc' }}
+                                                        />
+                                                        <span style={{ fontSize: '0.8em' }}>até</span>
+                                                        <input
+                                                            type="time"
+                                                            value={editForm.hora_fim}
+                                                            onChange={(e) => setEditForm({ ...editForm, hora_fim: e.target.value })}
+                                                            style={{ padding: '4px', fontSize: '0.85em', borderRadius: '3px', border: '1px solid #ccc' }}
+                                                        />
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSaveEdit(s.id);
+                                                            }}
+                                                            style={{ padding: '4px 8px', backgroundColor: COLORS.SUCCESS, color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.75em', fontWeight: 'bold' }}
+                                                            title="Salvar edição"
                                                         >
-                                                            <FaTrashAlt />
+                                                            <FaSave />
                                                         </button>
-                                                    )}
-                                                </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleCancelEdit();
+                                                            }}
+                                                            style={{ padding: '4px 8px', backgroundColor: COLORS.SECONDARY_TEXT, color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.75em', fontWeight: 'bold' }}
+                                                            title="Cancelar edição"
+                                                        >
+                                                            <FaTimes />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    // Modo Visualização
+                                                    <>
+                                                        <span style={{ display: 'flex', alignItems: 'center' }}>
+                                                            {/* Ícone de check (VISÍVEL APENAS em Modo de Seleção) */}
+                                                            {isSelectionMode && <FaCheck style={{ marginRight: '5px', color: isSelected ? COLORS.PRIMARY : COLORS.SECONDARY_TEXT }} />}
+                                                            {s.inicio} - {s.fim}
+                                                        </span>
+                                                        
+                                                        {/* Contêiner da Ação (Estável no lado direito) */}
+                                                        <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
+                                                            {/* Botão de edição individual (SÓ APARECE FORA DO MODO DE SELEÇÃO) */}
+                                                            {!isSelectionMode && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleStartEdit(s.id, s.inicio, s.fim);
+                                                                    }} 
+                                                                    style={{ padding: '3px 8px', backgroundColor: COLORS.ACCENT, color: COLORS.PRIMARY, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75em', fontWeight: 'bold' }}
+                                                                    title="Editar horário"
+                                                                >
+                                                                    <FaEdit />
+                                                                </button>
+                                                            )}
+                                                            {/* Botão de exclusão individual (SÓ APARECE FORA DO MODO DE SELEÇÃO) */}
+                                                            {!isSelectionMode && (
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); handleStartDelete(s.id, diaEnum, s.inicio, s.fim); }} 
+                                                                    style={{ padding: '3px 8px', backgroundColor: COLORS.ERROR, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75em' }}
+                                                                    title="Deletar horário"
+                                                                >
+                                                                    <FaTrashAlt />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                         );
                                     })}
