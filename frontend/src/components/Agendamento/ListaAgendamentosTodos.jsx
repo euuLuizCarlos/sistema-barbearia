@@ -6,7 +6,8 @@ import api from '../../services/api';
 import { FaUser, FaClock, FaCut, FaDollarSign, FaCheck, FaTimes, FaSpinner, FaSearch, FaStar, FaUserCircle, FaEye } from 'react-icons/fa';
 import ModalFechamentoComanda from './ModalFechamentoComanda';
 import { useUi } from '../../contexts/UiContext'; 
-import { useAuth } from '../../contexts/AuthContext'; 
+import { useAuth } from '../../contexts/AuthContext';
+import { MESES_PT_ABREV } from '../../helpers/dateFormatting'; 
 
 const COLORS = {
     PRIMARY: '#023047',
@@ -206,8 +207,7 @@ const ListaAgendamentosTodos = ({ refreshKey }) => {
                         
                         // Converte YYYY-MM-DD em DD/MMM/YY para exibição
                         const [year, month, day] = dataParte.split('-');
-                        const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-                        const dataFormatada = `${day}/${meses[parseInt(month) - 1]}/${year.slice(2)}`;
+                        const dataFormatada = `${day}/${MESES_PT_ABREV[parseInt(month) - 1]}/${year.slice(2)}`;
                         
                         const valorFormatado = parseFloat(a.valor_servico || 0).toFixed(2);
                         const isPending = a.status === 'agendado';

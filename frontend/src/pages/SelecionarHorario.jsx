@@ -9,10 +9,12 @@ import { FaChevronLeft, FaCalendarAlt, FaClock, FaUserCircle, FaCheckCircle, FaS
 
 // Importar DatePicker e CSS
 import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css'; 
+import 'react-datepicker/dist/react-datepicker.css';
+import { registerLocale } from 'react-datepicker';
+import pt_BR from 'date-fns/locale/pt-BR';
 
-// Importar o novo Modal de Confirmação
-import ModalConfirmacao from '../components/Agendamento/ModalConfirmacao'; 
+// Registrar locale português brasileiro
+registerLocale('pt-BR', pt_BR); 
 
 
 // --- FUNÇÕES UTILIITÁRIAS DE DATA ---
@@ -292,6 +294,7 @@ const SelecionarHorario = () => {
                             selected={selectedDate}
                             onChange={handleDateChange} 
                             dateFormat="dd/MM/yyyy"
+                            locale="pt-BR"
                             minDate={new Date()} 
                             inline 
                         />

@@ -185,6 +185,12 @@ const DashboardCliente = () => {
                     </p>
                 )}
                 
+                {lastAppointment.status === 'cancelado' && (
+                    <p style={{ margin: '0 0 10px 0', fontSize: '1em', fontWeight: 'bold', color: ERROR_COLOR }}>
+                        ❌ Cancelado
+                    </p>
+                )}
+                
                 <p style={{ margin: '5px 0', fontSize: '1.1em', fontWeight: 'bold' }}>
                     <FaCalendarAlt style={{ marginRight: '8px' }} /> 
                     {dataAgendamento.toLocaleDateString('pt-BR')} | {horaFormatada}
@@ -195,6 +201,28 @@ const DashboardCliente = () => {
                 <p style={{ margin: '5px 0', fontSize: '1em' }}>
                     <FaUserTie style={{ marginRight: '8px' }} /> Barbearia: {lastAppointment.nome_barbearia || 'Não Informado'}
                 </p>
+
+                {/* MOTIVO DE CANCELAMENTO (SE CANCELADO) */}
+                {lastAppointment.status === 'cancelado' && lastAppointment.motivo_cancelamento && (
+                    <div style={{ 
+                        margin: '10px 0 0 0', 
+                        fontSize: '0.95em',
+                        color: ERROR_COLOR,
+                        borderLeft: `3px solid ${ERROR_COLOR}`, 
+                        backgroundColor: '#ffe6e6',
+                        padding: '10px',
+                        borderRadius: '4px'
+                    }}>
+                        <p style={{ margin: '0 0 5px 0', fontStyle: 'italic' }}>
+                            Motivo: {lastAppointment.motivo_cancelamento}
+                        </p>
+                        {lastAppointment.cancelado_por && (
+                            <p style={{ margin: '0', fontSize: '0.9em' }}>
+                                Cancelado por: {lastAppointment.cancelado_por}
+                            </p>
+                        )}
+                    </div>
+                )}
                 
                 <div style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)' }}>
                      <FaChevronRight size={24} color={accentColor} />

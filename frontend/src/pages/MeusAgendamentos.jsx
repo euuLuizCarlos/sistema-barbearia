@@ -175,6 +175,27 @@ const MeusAgendamentos = () => {
                                 <p style={{ margin: '5px 0' }}><FaClock style={{ marginRight: '5px'}}/> Horário: **{formatDateTime(ag.data_hora_inicio)}**</p>
                                 <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: COLORS.SUCCESS }}/> Valor: **R$ {parseFloat(ag.valor_servico).toFixed(2)}**</p>
 
+                                {/* MOTIVO DE CANCELAMENTO (EXIBIDO PARA O CLIENTE) */}
+                                {ag.status === 'cancelado' && ag.motivo_cancelamento && (
+                                    <div style={{ 
+                                        margin: '10px 0 0 0', 
+                                        color: COLORS.ERROR, 
+                                        borderLeft: `3px solid ${COLORS.ERROR}`, 
+                                        backgroundColor: '#ffe6e6',
+                                        padding: '10px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <p style={{ margin: '0 0 5px 0', fontStyle: 'italic' }}>
+                                            Motivo: {ag.motivo_cancelamento}
+                                        </p>
+                                        {ag.cancelado_por && (
+                                            <p style={{ margin: '0', fontSize: '0.9em' }}>
+                                                Cancelado por: {ag.cancelado_por}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* AVALIAÇÃO E AÇÃO */}
                                 {needsReview && (
                                     <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #ffb70366' }}>
