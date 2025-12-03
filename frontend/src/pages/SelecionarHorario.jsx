@@ -16,8 +16,14 @@ import ModalConfirmacao from '../components/Agendamento/ModalConfirmacao';
 
 
 // --- FUNÇÕES UTILIITÁRIAS DE DATA ---
-// Retorna a data no formato YYYY-MM-DD
-const formatDateToISO = (date) => date.toISOString().split('T')[0];
+// 🚨 CORREÇÃO: Retorna a data no formato YYYY-MM-DD usando timezone LOCAL (não UTC)
+// Isso evita problemas de deslocamento de data em diferentes timezones (ex: Brasil -3 UTC)
+const formatDateToISO = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 // Retorna o nome do dia da semana (ex: Qui, Sex)
 const getDayName = (date) => date.toLocaleDateString('pt-BR', { weekday: 'short' });

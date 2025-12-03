@@ -1856,18 +1856,34 @@ app.get('/barbearia/:barbeiroPrincipalId/profissionais', async (req, res) => {
 // Objetivo: Retorna a lista de horários de início disponíveis para aquele serviço e data.
 // server.js (Substitua a rota existente)
 
+// 🚨 FUNÇÃO HELPER: Calcula dia da semana sem dependência de timezone
+// Recebe data em formato YYYY-MM-DD e retorna o dia da semana em português
+function getDiaSemana(dateString) {
+    // Parse YYYY-MM-DD sem criar Date (evita timezone)
+    const [year, month, day] = dateString.split('-').map(Number);
+    
+    // Algoritmo de Zeller (funciona para datas em formato local)
+    const q = day;
+    const m = month >= 3 ? month : month + 12;
+    const k = year % 100;
+    const j = Math.floor(year / 100);
+    
+    const h = (q + Math.floor(13 * (m + 1) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) - 2 * j) % 7;
+    // h: 0=sábado, 1=domingo, 2=segunda, ..., 6=sexta
+    const diasMap = ['sabado', 'domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta'];
+    return diasMap[h];
+}
+
 app.get('/agendamento/:barbeiroId/disponibilidade/:data/:servicoId', async (req, res) => {
     const { barbeiroId, data: dataString, servicoId } = req.params;
 
-    // Determina o dia da semana (para checar horarios_atendimento)
-    const date = new Date(dataString + 'T00:00:00'); 
-    const diaSemanaIndex = date.getDay(); 
-    const dias = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-    const dia_semana = dias[diaSemanaIndex];
+    // 🚨 CORREÇÃO: Usar função sem timezone em vez de new Date()
+    const dia_semana = getDiaSemana(dataString);
 
     try {
         // 1. 🚨 CHECAGEM CRÍTICA: VERIFICA SE A DATA ESTÁ BLOQUEADA 🚨
-        const sqlBloqueio = 'SELECT reason FROM blocked_dates WHERE barbeiro_id = ? AND date = ?';
+        // Usar DATE() para garantir comparação exata (sem timezone) — dataString é 'YYYY-MM-DD'
+        const sqlBloqueio = 'SELECT reason FROM blocked_dates WHERE barbeiro_id = ? AND DATE(date) = ?';
         const [bloqueio] = await db.query(sqlBloqueio, [barbeiroId, dataString]); // dataString é 'YYYY-MM-DD'
 
         if (bloqueio.length > 0) {
@@ -2069,6 +2085,13 @@ app.post('/blocked-dates', authenticateToken, async (req, res) => {
     }
 
     try {
+        // 🚨 CRÍTICO: Garantir que a data seja armazenada exatamente como recebida (YYYY-MM-DD)
+        // SEM conversão de timezone. O campo DATE do MySQL armazena apenas YYYY-MM-DD sem timezone.
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if (!datePattern.test(date)) {
+            return res.status(400).json({ error: "Formato de data inválido. Use YYYY-MM-DD." });
+        }
+
         const sql = 'INSERT INTO blocked_dates (barbeiro_id, date, reason) VALUES (?, ?, ?)';
         const [result] = await db.query(sql, [barbeiro_id, date, reason || null]);
         

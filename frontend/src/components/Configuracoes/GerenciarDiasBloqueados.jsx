@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FaCalendarAlt, FaTrashAlt, FaTimes, FaPlusCircle, FaSpinner } from 'react-icons/fa';
-// NOTA: Remova o comentário 'import api...' se estiver usando a API real
-// import api from '../../services/api'; 
-// import { useUi } from '../../contexts/UiContext'; 
+import api from '../../services/api';
+import { useUi } from '../../contexts/UiContext'; 
 
 
 const PRIMARY_COLOR = '#023047';
@@ -13,31 +12,29 @@ const SUCCESS_COLOR = '#4CAF50';
 const ERROR_COLOR = '#cc0000';
 
 
-// Mock de dados para simular a lista (Mantenha para testes de frontend)
-const mockBlockedDates = [
-    { id: 1, date: '2025-12-25', reason: 'Natal' },
-    { id: 2, date: '2026-01-01', reason: 'Ano Novo' },
-];
+// Lista inicial vazia — será carregada da API (cada barbeiro tem seus próprios bloqueios)
 
 // O componente recebe 'onCancel' para fechar/voltar
 const GerenciarDiasBloqueados = ({ onCancel }) => {
     
-    // Simula o useUi para feedback no frontend
-    const ui = {
-        confirm: async (msg) => window.confirm(msg),
-        showPostIt: (msg, type) => console.log(`[POSTIT ${type.toUpperCase()}]: ${msg}`)
-    };
-
-    const [blockedDates, setBlockedDates] = useState(mockBlockedDates);
+    const ui = useUi();
+    const [blockedDates, setBlockedDates] = useState([]);
     const [newDate, setNewDate] = useState('');
     const [newReason, setNewReason] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
+    // 🚨 Função helper: garante que a data seja enviada corretamente (sem deslocamento de timezone)
+    // O input type="date" retorna YYYY-MM-DD. Normalizamos para evitar ambiguidade.
+    const formatDateForBackend = (dateString) => {
+        if (!dateString || dateString.length !== 10) return dateString;
+        // Input type="date" retorna sempre YYYY-MM-DD — enviar exatamente como está
+        return dateString;
+    };
 
-    // --- FUNÇÕES DA API (MOCKADAS) ---
+    // --- FUNÇÕES DA API ---
     
-    // Simula a adição de um dia bloqueado
-    const handleAddBlockedDate = (e) => {
+    // Adiciona um dia bloqueado via API (fica associado ao barbeiro logado)
+    const handleAddBlockedDate = async (e) => {
         e.preventDefault();
         if (isProcessing) return;
 
@@ -45,37 +42,40 @@ const GerenciarDiasBloqueados = ({ onCancel }) => {
             ui.showPostIt('Preencha a data e o motivo.', 'error');
             return;
         }
-        
+
         setIsProcessing(true);
-        
-        // Simulação de adição bem-sucedida (Substitua pela chamada API real)
-        setTimeout(() => {
-            const newEntry = {
-                id: Date.now(),
-                date: newDate,
-                reason: newReason,
-            };
+        try {
+            const resp = await api.post('/blocked-dates', { date: formatDateForBackend(newDate), reason: newReason });
+            const newEntry = { id: resp.data.id, date: newDate, reason: newReason };
             setBlockedDates(prev => [...prev, newEntry]);
             setNewDate('');
             setNewReason('');
             ui.showPostIt('Dia bloqueado adicionado com sucesso!', 'success');
+        } catch (err) {
+            console.error('Erro ao adicionar dia bloqueado:', err);
+            const message = err.response?.data?.error || 'Falha ao bloquear o dia.';
+            ui.showPostIt(message, 'error');
+        } finally {
             setIsProcessing(false);
-        }, 500);
+        }
     };
 
-    // Simula a remoção de um dia bloqueado
+    // Remove dia bloqueado via API
     const handleRemoveBlockedDate = async (id) => {
         const ok = await ui.confirm('Tem certeza que deseja remover este dia da lista de bloqueio?');
         if (!ok) return;
-        
-        setIsProcessing(true);
 
-        // Simulação de remoção bem-sucedida (Substitua pela chamada API real)
-        setTimeout(() => {
-            setBlockedDates(blockedDates.filter(date => date.id !== id));
+        setIsProcessing(true);
+        try {
+            await api.delete(`/blocked-dates/${id}`);
+            setBlockedDates(prev => prev.filter(d => d.id !== id));
             ui.showPostIt('Dia bloqueado removido com sucesso!', 'success');
+        } catch (err) {
+            console.error('Erro ao remover dia bloqueado:', err);
+            ui.showPostIt('Falha ao remover dia bloqueado.', 'error');
+        } finally {
             setIsProcessing(false);
-        }, 500);
+        }
     };
 
     /* --- ESTILOS --- */
@@ -118,6 +118,23 @@ const GerenciarDiasBloqueados = ({ onCancel }) => {
         return isoDate;
     };
 
+
+    // Carrega os dias bloqueados do barbeiro logado ao montar
+    useEffect(() => {
+        let mounted = true;
+        const load = async () => {
+            try {
+                const resp = await api.get('/blocked-dates/meus');
+                if (!mounted) return;
+                setBlockedDates(resp.data || []);
+            } catch (err) {
+                console.error('Erro ao carregar dias bloqueados:', err);
+                ui.showPostIt('Falha ao carregar dias bloqueados.', 'error');
+            }
+        };
+        load();
+        return () => { mounted = false; };
+    }, [ui]);
 
     return (
         <div style={containerStyle}>
