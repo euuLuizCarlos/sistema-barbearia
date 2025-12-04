@@ -6,6 +6,7 @@ import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useUi } from '../contexts/UiContext';
 import { FaChevronLeft, FaCalendarAlt, FaClock, FaUserCircle, FaCheckCircle, FaSpinner } from 'react-icons/fa';
+import ModalConfirmacao from '../components/Agendamento/ModalConfirmacao';
 
 // Importar DatePicker e CSS
 import DatePicker from 'react-datepicker';
