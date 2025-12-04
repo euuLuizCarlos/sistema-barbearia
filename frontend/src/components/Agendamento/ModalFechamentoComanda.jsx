@@ -41,7 +41,7 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                 // Se houver apenas uma maquininha ativa, seleciona automaticamente
                 if (maquinasAtivas.length === 1) {
                     setMaquininhaSelecionada(maquinasAtivas[0].id);
-                    setTaxaMaquininha(maquinasAtivas[0].taxa);
+                    setTaxaMaquininha(parseFloat(maquinasAtivas[0].taxa) || 0);
                 } else if (maquinasAtivas.length > 0) {
                     // Se houver múltiplas, não seleciona automaticamente
                     setMaquininhaSelecionada('');
@@ -52,7 +52,7 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                 // Fallback: busca taxa antiga
                 try {
                     const response = await api.get('/taxa-cartao');
-                    setTaxaMaquininha(response.data.taxa || 0);
+                    setTaxaMaquininha(parseFloat(response.data.taxa) || 0);
                 } catch (e) {
                     setTaxaMaquininha(0);
                 }
@@ -68,8 +68,11 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
         if (maquininhaSelecionada && maquininhas.length > 0) {
             const maq = maquininhas.find(m => m.id === parseInt(maquininhaSelecionada));
             if (maq) {
-                setTaxaMaquininha(maq.taxa);
+                setTaxaMaquininha(parseFloat(maq.taxa) || 0);
             }
+        } else if (!maquininhaSelecionada) {
+            // Se nenhuma maquininha estiver selecionada, zera a taxa
+            setTaxaMaquininha(0);
         }
     }, [maquininhaSelecionada, maquininhas]);
     
