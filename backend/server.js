@@ -824,7 +824,7 @@ app.put('/perfil/foto', authenticateToken, (req, res) => {
 // Aplicando o middleware nas rotas que precisam de autenticação
 app.post('/movimentacoes', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
-    let { descricao, valor, tipo, categoria, forma_pagamento } = req.body;
+    let { descricao, valor, tipo, categoria, forma_pagamento, maquininha_id } = req.body;
     valor = parseFloat(valor);
 
     if (!valor || valor <= 0 || !tipo || !descricao || !forma_pagamento) {
@@ -836,7 +836,19 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
 
         // 1. APLICAÇÃO DA TAXA DO CARTÃO (Se for Receita com Cartão)
         if (forma_pagamento === 'cartao' && tipo === 'receita') {
-            const taxaPercentual = await getTaxaCartao(barbeiro_id);
+            let taxaPercentual = 0;
+            let nomeMaquininha = '';
+
+            // Se maquininha_id foi informado, busca taxa específica
+            if (maquininha_id) {
+                taxaPercentual = await getTaxaMaquininha(maquininha_id, barbeiro_id);
+                const [maqRows] = await db.query('SELECT nome FROM maquininhas WHERE id = ?', [maquininha_id]);
+                nomeMaquininha = maqRows && maqRows[0] ? ` (${maqRows[0].nome})` : '';
+            } else {
+                // Fallback: usa taxa padrão
+                taxaPercentual = await getTaxaCartao(barbeiro_id);
+            }
+
             if (taxaPercentual > 0) {
                 const taxaValor = valor * (taxaPercentual / 100);
                 
@@ -844,7 +856,7 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
                 const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
                 await db.query(sqlInsertTaxa, [
                     barbeiro_id,
-                    `Taxa Cartão Ref: ${descricao.substring(0, 50)}`,
+                    `Taxa Cartão${nomeMaquininha} Ref: ${descricao.substring(0, 50)}`,
                     taxaValor,
                     'despesa',
                     'taxa',
@@ -1066,6 +1078,115 @@ async function getTaxaCartao(barbeiroId) {
         return 0.00;
     }
 }
+
+// ============================================
+// ROTAS PARA GERENCIAR MAQUININHAS
+// ============================================
+
+// GET /maquininhas - Listar todas as maquininhas do barbeiro
+app.get('/maquininhas', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    try {
+        const sql = 'SELECT * FROM maquininhas WHERE barbeiro_id = ? ORDER BY ativa DESC, nome ASC';
+        const [maquininhas] = await db.query(sql, [barbeiro_id]);
+        return res.status(200).json(maquininhas);
+    } catch (error) {
+        console.error("Erro ao listar maquininhas:", error);
+        return res.status(500).json({ error: "Erro ao buscar maquininhas." });
+    }
+});
+
+// POST /maquininhas - Criar nova maquininha
+app.post('/maquininhas', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { nome, taxa } = req.body;
+
+    if (!nome || !taxa || isNaN(parseFloat(taxa))) {
+        return res.status(400).json({ error: "Nome e taxa são obrigatórios." });
+    }
+
+    const taxaNumerica = parseFloat(taxa);
+    if (taxaNumerica < 0 || taxaNumerica > 100) {
+        return res.status(400).json({ error: "Taxa deve estar entre 0 e 100." });
+    }
+
+    try {
+        const sql = 'INSERT INTO maquininhas (barbeiro_id, nome, taxa, ativa) VALUES (?, ?, ?, TRUE)';
+        const [result] = await db.query(sql, [barbeiro_id, nome, taxaNumerica]);
+        return res.status(201).json({ 
+            id: result.insertId, 
+            message: "Maquininha criada com sucesso!" 
+        });
+    } catch (error) {
+        console.error("Erro ao criar maquininha:", error);
+        return res.status(500).json({ error: "Erro ao criar maquininha." });
+    }
+});
+
+// PUT /maquininhas/:id - Atualizar maquininha
+app.put('/maquininhas/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { id } = req.params;
+    const { nome, taxa, ativa } = req.body;
+
+    if (!nome || taxa === undefined) {
+        return res.status(400).json({ error: "Nome e taxa são obrigatórios." });
+    }
+
+    const taxaNumerica = parseFloat(taxa);
+    if (isNaN(taxaNumerica) || taxaNumerica < 0 || taxaNumerica > 100) {
+        return res.status(400).json({ error: "Taxa deve estar entre 0 e 100." });
+    }
+
+    try {
+        const sql = 'UPDATE maquininhas SET nome = ?, taxa = ?, ativa = ? WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.query(sql, [nome, taxaNumerica, ativa !== false, id, barbeiro_id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Maquininha não encontrada." });
+        }
+
+        return res.status(200).json({ message: "Maquininha atualizada com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao atualizar maquininha:", error);
+        return res.status(500).json({ error: "Erro ao atualizar maquininha." });
+    }
+});
+
+// DELETE /maquininhas/:id - Excluir maquininha
+app.delete('/maquininhas/:id', authenticateToken, async (req, res) => {
+    const barbeiro_id = req.user.id;
+    const { id } = req.params;
+
+    try {
+        const sql = 'DELETE FROM maquininhas WHERE id = ? AND barbeiro_id = ?';
+        const [result] = await db.query(sql, [id, barbeiro_id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Maquininha não encontrada." });
+        }
+
+        return res.status(200).json({ message: "Maquininha excluída com sucesso!" });
+    } catch (error) {
+        console.error("Erro ao excluir maquininha:", error);
+        return res.status(500).json({ error: "Erro ao excluir maquininha." });
+    }
+});
+
+// Função auxiliar para buscar taxa de uma maquininha específica
+async function getTaxaMaquininha(maquininhaId, barbeiroId) {
+    try {
+        const [rows] = await db.query(
+            'SELECT taxa FROM maquininhas WHERE id = ? AND barbeiro_id = ? AND ativa = TRUE', 
+            [maquininhaId, barbeiroId]
+        );
+        return parseFloat(rows && rows[0] ? rows[0].taxa : 0.00);
+    } catch (e) {
+        console.error("Erro ao buscar taxa da maquininha:", e);
+        return 0.00;
+    }
+}
+
 // server.js (Rota para Relatório Mensal - Cerca da Linha 480)
 // server.js (Rota para Relatório Mensal)
 app.get('/relatorio/mensal/:ano/:mes', authenticateToken, async (req, res) => {
@@ -2287,7 +2408,7 @@ app.delete('/blocked-dates/:id', authenticateToken, async (req, res) => {
 
 app.post('/comanda/fechar', authenticateToken, async (req, res) => {
     // Adicionando os novos campos à desestruturação
-    const { agendamento_id, valor_cobrado, forma_pagamento, 
+    const { agendamento_id, valor_cobrado, forma_pagamento, maquininha_id,
             avaliacao_cliente_nota, avaliacao_cliente_obs } = req.body; 
     const barbeiro_id = req.user.id; 
 
@@ -2305,11 +2426,21 @@ app.post('/comanda/fechar', authenticateToken, async (req, res) => {
         // 1. CALCULAR TAXA (Se for cartão)
         let valorLiquido = valorCobrado;
         let taxaValor = 0;
+        let nomeMaquininha = '';
         
         if (forma_pagamento === 'cartao') {
-            // Buscamos a taxa do barbeiro logado
-            const taxaMaquininha = await getTaxaCartao(barbeiro_id); 
-            taxaValor = valorCobrado * (taxaMaquininha / 100);
+            // Se maquininha_id foi informado, busca taxa específica
+            if (maquininha_id) {
+                const taxaMaquininha = await getTaxaMaquininha(maquininha_id, barbeiro_id);
+                // Busca o nome da maquininha para usar na descrição
+                const [maqRows] = await connection.query('SELECT nome FROM maquininhas WHERE id = ?', [maquininha_id]);
+                nomeMaquininha = maqRows && maqRows[0] ? ` (${maqRows[0].nome})` : '';
+                taxaValor = valorCobrado * (taxaMaquininha / 100);
+            } else {
+                // Fallback: usa taxa padrão (compatibilidade com código antigo)
+                const taxaMaquininha = await getTaxaCartao(barbeiro_id); 
+                taxaValor = valorCobrado * (taxaMaquininha / 100);
+            }
             valorLiquido = valorCobrado - taxaValor;
         }
 
@@ -2328,7 +2459,7 @@ app.post('/comanda/fechar', authenticateToken, async (req, res) => {
 
         // 3. REGISTRAR MOVIMENTAÇÃO FINANCEIRA (Despesa da Taxa, se houver)
         if (taxaValor > 0) {
-            const descricaoTaxa = `Despesa - Taxa Cartão Ref: Agd #${agendamento_id}`;
+            const descricaoTaxa = `Despesa - Taxa Cartão${nomeMaquininha} Ref: Agd #${agendamento_id}`;
             const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
             await connection.query(sqlInsertTaxa, [
                 barbeiro_id,

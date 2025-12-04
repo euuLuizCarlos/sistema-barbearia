@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 // Importa o componente de controle de caixa
 import ConfiguracaoTaxaMaquininha from "../components/ControleCaixa/ConfiguracaoTaxaMaquininha";
+import GerenciarMaquininhas from "../components/ControleCaixa/GerenciarMaquininhas";
 // 🚨 CAMINHO CORRIGIDO: Assume que o arquivo está em src/components/Configuracoes
 import GerenciarDiasBloqueados from "../components/Configuracoes/GerenciarDiasBloqueados.jsx"; 
 import TermosDeUso from "../components/TermosDeUso.jsx"; 
@@ -12,7 +13,7 @@ const PRIMARY_COLOR = '#023047';
 const ACCENT_COLOR = '#FFB703';
 
 const Configuracoes = () => {
-    // 💡 ESTADO: Qual seção deve ser exibida? ('taxa', 'bloqueios', ou null)
+    // 💡 ESTADO: Qual seção deve ser exibida? ('taxa', 'maquininhas', 'bloqueios', ou null)
     const [secaoAtiva, setSecaoAtiva] = useState(null);
     const [mostrarTermos, setMostrarTermos] = useState(false); 
     
@@ -22,6 +23,8 @@ const Configuracoes = () => {
             case 'taxa':
                 // Passamos uma função para fechar a seção após a ação ou ao clicar no botão Fechar
                 return <ConfiguracaoTaxaMaquininha onCancel={() => setSecaoAtiva(null)} />;
+            case 'maquininhas':
+                return <GerenciarMaquininhas onCancel={() => setSecaoAtiva(null)} />;
             case 'bloqueios':
                 return <GerenciarDiasBloqueados onCancel={() => setSecaoAtiva(null)} />;
             default:
@@ -68,10 +71,10 @@ const Configuracoes = () => {
                 </div>
                 
                 <div 
-                    style={linkStyle(secaoAtiva === 'taxa')} 
-                    onClick={() => setSecaoAtiva('taxa')}
+                    style={linkStyle(secaoAtiva === 'maquininhas')} 
+                    onClick={() => setSecaoAtiva('maquininhas')}
                 >
-                    <span style={{ fontSize: '1.2em' }}>💳</span> Configuração da Taxa
+                    <span style={{ fontSize: '1.2em' }}>🏪</span> Gerenciar Maquininhas
                 </div>
 
                 <div 

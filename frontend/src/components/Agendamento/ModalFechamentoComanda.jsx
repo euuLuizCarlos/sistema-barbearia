@@ -22,27 +22,56 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState('');
     const [taxaMaquininha, setTaxaMaquininha] = useState(0);
+    const [maquininhas, setMaquininhas] = useState([]);
+    const [maquininhaSelecionada, setMaquininhaSelecionada] = useState('');
     
     // ESTADOS PARA A AVALIAÇÃO DO CLIENTE
     // 💡 NOTA: O backend espera TINYINT(1), então mandamos um número.
     const [notaCliente, setNotaCliente] = useState(5); 
     const [obsCliente, setObsCliente] = useState('');
     
-    // Buscar taxa da maquininha ao carregar o modal
+    // Buscar maquininhas ao carregar o modal
     useEffect(() => {
-        const fetchTaxa = async () => {
+        const fetchMaquininhas = async () => {
             try {
-                const response = await api.get('/taxa-cartao');
-                setTaxaMaquininha(response.data.taxa || 0);
+                const response = await api.get('/maquininhas');
+                const maquinasAtivas = response.data.filter(m => m.ativa);
+                setMaquininhas(maquinasAtivas);
+                
+                // Se houver apenas uma maquininha ativa, seleciona automaticamente
+                if (maquinasAtivas.length === 1) {
+                    setMaquininhaSelecionada(maquinasAtivas[0].id);
+                    setTaxaMaquininha(maquinasAtivas[0].taxa);
+                } else if (maquinasAtivas.length > 0) {
+                    // Se houver múltiplas, não seleciona automaticamente
+                    setMaquininhaSelecionada('');
+                    setTaxaMaquininha(0);
+                }
             } catch (error) {
-                console.error("Erro ao buscar taxa:", error);
-                setTaxaMaquininha(0);
+                console.error("Erro ao buscar maquininhas:", error);
+                // Fallback: busca taxa antiga
+                try {
+                    const response = await api.get('/taxa-cartao');
+                    setTaxaMaquininha(response.data.taxa || 0);
+                } catch (e) {
+                    setTaxaMaquininha(0);
+                }
             } finally {
                 setLoading(false);
             }
         };
-        fetchTaxa();
+        fetchMaquininhas();
     }, []);
+    
+    // Atualizar taxa quando maquininha for selecionada
+    useEffect(() => {
+        if (maquininhaSelecionada && maquininhas.length > 0) {
+            const maq = maquininhas.find(m => m.id === parseInt(maquininhaSelecionada));
+            if (maq) {
+                setTaxaMaquininha(maq.taxa);
+            }
+        }
+    }, [maquininhaSelecionada, maquininhas]);
     
     // Efeito para garantir que o valor inicial seja válido
     useEffect(() => {
@@ -84,6 +113,7 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                 agendamento_id: agendamento.id,
                 valor_cobrado: valorCobrado,
                 forma_pagamento: formaPagamento,
+                maquininha_id: maquininhaSelecionada || null,
                 
                 // 🚨 GARANTINDO QUE OS VALORES ENVIADOS SÃO CORRETOS 🚨
                 avaliacao_cliente_nota: notaCliente, 
@@ -134,7 +164,7 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                 <select 
                     value={formaPagamento} 
                     onChange={(e) => setFormaPagamento(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '5px' }}
+                    style={{ width: '100%', padding: '10px', marginBottom: '15px', border: '1px solid #ccc', borderRadius: '5px' }}
                     disabled={loading}
                 >
                     <option value="dinheiro">Dinheiro</option>
@@ -142,6 +172,26 @@ const ModalFechamentoComanda = ({ agendamento, onClose, onFinish }) => {
                     <option value="pix">PIX</option>
                     <option value="outro">Outro</option>
                 </select>
+
+                {/* CAMPO 3: SELEÇÃO DE MAQUININHA (Só aparece se for cartão) */}
+                {formaPagamento === 'cartao' && maquininhas.length > 0 && (
+                    <>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Maquininha</label>
+                        <select 
+                            value={maquininhaSelecionada} 
+                            onChange={(e) => setMaquininhaSelecionada(e.target.value)} 
+                            style={{ width: '100%', padding: '10px', marginBottom: '15px', border: '1px solid #ccc', borderRadius: '5px' }}
+                            disabled={loading}
+                        >
+                            <option value="">Selecione uma maquininha...</option>
+                            {maquininhas.map(maq => (
+                                <option key={maq.id} value={maq.id}>
+                                    {maq.nome} - {parseFloat(maq.taxa).toFixed(2)}%
+                                </option>
+                            ))}
+                        </select>
+                    </>
+                )}
                 
                 <hr style={{ margin: '25px 0' }}/>
                 
