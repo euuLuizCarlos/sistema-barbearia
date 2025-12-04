@@ -90,14 +90,16 @@ const Register = () => {
     const [message, setMessage] = useState('');
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
+    const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [telefoneError, setTelefoneError] = useState('');
     const [documentoExists, setDocumentoExists] = useState(false);
     const [documentoChecking, setDocumentoChecking] = useState(false);
     const [documentoError, setDocumentoError] = useState('');
     const [previewUrl, setPreviewUrl] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [formData, setFormData] = useState({
-        nome: '', email: '', password: '', tipo_usuario: userType,
+        nome: '', email: '', password: '', confirmPassword: '', tipo_usuario: userType,
         nome_barbearia: '', documento: '', telefone: '', cep: '', rua: '', numero: '', bairro: '', complemento: '', uf: '', localidade: '',
         foto_perfil: null
     });
@@ -108,6 +110,7 @@ const Register = () => {
         // limpa erros específicos ao editar campos relacionados
         if (name === 'email' && emailError) setEmailError('');
         if (name === 'password' && passwordError) setPasswordError('');
+        if (name === 'confirmPassword' && confirmPasswordError) setConfirmPasswordError('');
         if (name === 'documento' && documentoError) setDocumentoError('');
         if (name === 'telefone' && telefoneError) setTelefoneError('');
         if (files && files.length > 0) {
@@ -297,16 +300,18 @@ const Register = () => {
         }
     };
 
-    // --- FUNÇÃO 1: CRIA O USUÁRIO (ETAPA 1) ---
+    // --- FUNÇÃO 1: CRIA O USUÁRIO (ETAPA 1) ---
     const handleInitialRegister = async (e) => {
         e.preventDefault();
         setMessage('Cadastrando usuário...');
         setEmailError('');
         setPasswordError('');
+        setConfirmPasswordError('');
         setDocumentoError('');
         // Validações simples no frontend: email e senha
         const email = (formData.email || '').trim();
         const password = formData.password || '';
+        const confirmPassword = formData.confirmPassword || '';
         // Aceita apenas emails do Gmail
         const gmailRegex = /^[^\s@]+@gmail\.com$/i;
         if (!gmailRegex.test(email)) {
@@ -316,6 +321,11 @@ const Register = () => {
         }
         if (password.length < 8) {
             setPasswordError('A senha deve ter no mínimo 8 caracteres.');
+            setMessage('Corrija os erros no formulário.');
+            return;
+        }
+        if (password !== confirmPassword) {
+            setConfirmPasswordError('As senhas não coincidem.');
             setMessage('Corrija os erros no formulário.');
             return;
         }
@@ -360,6 +370,11 @@ const Register = () => {
                 if (!isValidCPF(cleanedDocumento)) {
                     setDocumentoError('CPF inválido. Verifique os dígitos.');
                     setMessage('Corrija os erros no formulário.');
+                    return;
+                }
+
+                if (documentoExists) {
+                    setMessage('CPF já cadastrado. Use outro ou recupere acesso.');
                     return;
                 }
 
@@ -498,6 +513,25 @@ const Register = () => {
                 {passwordError && (
                     <div style={{ ...errorBadgeStyle, right: '8px', top: 'calc(100% + 8px)', transform: 'none', position: 'relative', marginTop: '6px' }}>
                         {passwordError}
+                    </div>
+                )}
+            </div>
+
+            <div style={{ position: 'relative', marginBottom: '20px' }}>
+                <span style={requiredAsteriskStyle}>*</span>
+                <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Confirmar Senha"
+                    required
+                    style={{ ...inputBaseStyle, paddingRight: '40px', marginBottom: '0', boxSizing: 'border-box' }}
+                />
+                <ShowPasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(s => !s)} ariaLabel={showConfirmPassword ? 'Ocultar confirmação' : 'Mostrar confirmação'} />
+                {confirmPasswordError && (
+                    <div style={{ ...errorBadgeStyle, right: '8px', top: 'calc(100% + 8px)', transform: 'none', position: 'relative', marginTop: '6px' }}>
+                        {confirmPasswordError}
                     </div>
                 )}
             </div>

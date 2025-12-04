@@ -832,7 +832,6 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
     }
 
     try {
-        let valorFinal = valor;
         let categoriaFinal = categoria || 'servico'; 
 
         // 1. APLICAÇÃO DA TAXA DO CARTÃO (Se for Receita com Cartão)
@@ -840,7 +839,6 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
             const taxaPercentual = await getTaxaCartao(barbeiro_id);
             if (taxaPercentual > 0) {
                 const taxaValor = valor * (taxaPercentual / 100);
-                valorFinal = valor - taxaValor;
                 
                 // Registra a DESPESA (Taxa) separadamente
                 const sqlInsertTaxa = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
@@ -855,12 +853,12 @@ app.post('/movimentacoes', authenticateToken, async (req, res) => {
             }
         }
 
-        // 2. Inserção da Movimentação Principal
+        // 2. Inserção da Movimentação Principal (SEMPRE COM VALOR BRUTO)
         const sqlInsertPrincipal = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
         const [result] = await db.query(sqlInsertPrincipal, [
             barbeiro_id,
             descricao,
-            valorFinal,
+            valor, // Registra o valor BRUTO (sem descontar a taxa)
             tipo,
             categoriaFinal,
             forma_pagamento
@@ -2315,14 +2313,14 @@ app.post('/comanda/fechar', authenticateToken, async (req, res) => {
             valorLiquido = valorCobrado - taxaValor;
         }
 
-        // 2. REGISTRAR MOVIMENTAÇÃO FINANCEIRA (Receita Líquida/Bruta)
+        // 2. REGISTRAR MOVIMENTAÇÃO FINANCEIRA (Receita Bruta)
         const descricaoReceita = `Receita - Agendamento #${agendamento_id} (${forma_pagamento})`;
         const sqlInsertReceita = 'INSERT INTO movimentacoes_financeiras (barbeiro_id, descricao, valor, tipo, categoria, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)';
         
         await connection.query(sqlInsertReceita, [
             barbeiro_id,
             descricaoReceita,
-            valorLiquido, // Salva o valor líquido/bruto
+            valorCobrado, // Salva o valor BRUTO (sem descontar a taxa)
             'receita',
             'servico',
             forma_pagamento
