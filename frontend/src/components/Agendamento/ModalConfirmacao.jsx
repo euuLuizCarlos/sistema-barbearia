@@ -74,7 +74,7 @@ const ModalConfirmacao = ({
                         <img src={barbeiro.foto_url || 'https://placehold.co/40/eee/333?text=B'} alt={barbeiro.nome} style={{ width: '40px', height: '40px', borderRadius: '50%', marginRight: '10px', objectFit: 'cover' }} />
                         <div>
                             <p style={{ margin: 0, fontWeight: 'bold' }}>{barbeiro.nome}</p>
-                            <p style={{ margin: 0, fontSize: '0.8em', color: '#555' }}>Barbearia Diego Ramos (Simulado)</p>
+                            <p style={{ margin: 0, fontSize: '0.8em', color: '#555' }}>{barbeiro.nome_barbearia || 'Barbearia sem nome'}</p>
                         </div>
                     </div>
 

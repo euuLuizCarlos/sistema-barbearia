@@ -42,7 +42,18 @@ const ExclusaoConta = () => {
     return (
         <div style={{ padding: '20px', border: '1px solid #ffcccc', borderRadius: '8px', maxWidth: '600px', margin: '20px auto', backgroundColor: '#fff0f0' }}>
             <h2 style={{ color: '#cc0000' }}>Excluir Minha Conta</h2>
-            <p>Se você deseja desativar permanentemente sua conta e remover todos os seus dados do sistema (incluindo perfil, taxas e movimentações), clique no botão abaixo.</p>
+            <p>Se você deseja desativar permanentemente sua conta e remover todos os seus dados do sistema, clique no botão abaixo.</p>
+            
+            <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '5px', padding: '15px', marginBottom: '15px' }}>
+                <p style={{ margin: 0, color: '#856404', fontSize: '0.95em' }}>
+                    <strong>⚠️ Atenção:</strong> Você só pode excluir sua conta se:
+                    <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px' }}>
+                        <li>Não houver agendamentos pendentes (conclua ou cancele todos)</li>
+                        <li>Não houver transações pendentes (para barbeiros)</li>
+                        <li>Você pode manter horários e serviços cadastrados</li>
+                    </ul>
+                </p>
+            </div>
             
             <button 
                 onClick={handleDelete} 

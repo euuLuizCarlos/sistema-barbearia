@@ -7,35 +7,29 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
-// 🚨 MÓDULOS DE UPLOAD 🚨
+
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// -----------------------
+
 
 dotenv.config();
 
 const corsOptions = {
-    // Permite requisições da porta 5173, que é o padrão do Vite
     origin: 'http://localhost:5173', 
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Crucial para o JWT
+    credentials: true, 
     optionsSuccessStatus: 204
 };
 
 const app = express();
 app.use(bodyParser.json());
-// 1. Aplica o CORS CORRETO
+
 app.use(cors(corsOptions));
 
-// -------------------------------------------------------------
-// 🚨 CONFIGURAÇÃO DO MULTER (UPLOAD DE FOTOS) 🚨
-// Este bloco deve estar aqui, após a inicialização do 'app'.
-// -------------------------------------------------------------
 
 const SECRET_KEY = process.env.SECRET_KEY || 'BARBERIA-SECRET-KEY'; 
 
-// Password reset token settings
 const PASSWORD_RESET_TOKEN_MINUTES = Number(process.env.PASSWORD_RESET_TOKEN_MINUTES || 60);
 
 function generateResetToken() {
@@ -47,7 +41,7 @@ function hashToken(token) {
 }
 
 async function sendResetEmail(email, resetLink) {
-    // Em dev: se não houver configuração de SMTP, apenas loga o link
+    
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
         console.log(`Reset link for ${email}: ${resetLink}`);
         return;
@@ -78,38 +72,31 @@ async function sendResetEmail(email, resetLink) {
     });
 }
 
-// --- Configuração de Upload (Multer) ---
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir);
     console.log('Diretório de uploads criado.');
 }
 
-// Configuração de Armazenamento
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, uploadsDir); // Salva na pasta 'uploads'
+        cb(null, uploadsDir); 
     },
     filename: (req, file, cb) => {
-        // Renomeia o arquivo para ser único (sem depender de req.user aqui)
         const ext = path.extname(file.originalname);
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, `foto-${uniqueSuffix}${ext}`); 
     }
 });
 
-// Middleware para processar o upload de uma única foto de perfil
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
-}).single('foto_perfil'); // Nome do campo no frontend
+    limits: { fileSize: 20 * 1024 * 1024 } 
+}).single('foto_perfil'); 
 
-// Rota para servir as imagens estaticamente
 app.use('/uploads', express.static(uploadsDir));
 
-// -------------------------------------------------------------
 
-// Conexão com o banco de dados (usando um Pool de Promessas)
 const db = mysql.createPool({ 
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -117,7 +104,6 @@ const db = mysql.createPool({
     database: process.env.DB_NAME
 });
 
-// Teste de conexão:
 db.getConnection()
     .then(connection => {
         console.log('Conexão com o banco de dados MySQL estabelecida!');
@@ -127,9 +113,9 @@ db.getConnection()
         console.error('Erro ao conectar ao banco de dados:', err);
     });
 
-// Nota: A função getTaxaCartao deve ser atualizada para usar 'db.query' já que agora é um Pool de Promessas.
+
 async function getTaxaCartao(barbeiroId) {
-// 🚨 CORRIGIDO: Agora aceita o parâmetro barbeiroId
+
     try {
         // A consulta usa o ID do barbeiro logado (multi-tenant)
         const [rows] = await db.query('SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?', [barbeiroId]);
@@ -140,12 +126,11 @@ async function getTaxaCartao(barbeiroId) {
     }
 }
 
-// ======= Validação de CPF e CNPJ (algoritmos oficiais) =======
 const isValidCPF = (cpf) => {
     if (!cpf) return false;
     const str = String(cpf).replace(/\D/g, '');
     if (str.length !== 11) return false;
-    if (/^(\d)\1+$/.test(str)) return false; // todos iguais
+    if (/^(\d)\1+$/.test(str)) return false; 
 
     const calc = (t) => {
         let sum = 0;
@@ -206,21 +191,17 @@ const isValidDocumento = (doc) => {
     return false;
 };
 
-// Validação simples de email
 const isValidEmail = (email) => {
     if (!email) return false;
-    // Regex simples e robusta para validar formato básico de email
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(String(email).toLowerCase());
 };
 
-// Verifica se é email Gmail
 const isGmail = (email) => {
     if (!email) return false;
     return /^[^\s@]+@gmail\.com$/i.test(String(email).toLowerCase());
 };
 
-// Função para formatar a data para SQL (YYYY-MM-DD) usando hora local
 const getTodayDate = () => {
     const d = new Date();
     const year = d.getFullYear();
@@ -229,7 +210,6 @@ const getTodayDate = () => {
     return `${year}-${month}-${day}`;
 };
 
-// Retorna a meia-noite do dia atual no horário local no formato MySQL 'YYYY-MM-DD HH:MM:SS'
 const getStartOfDay = () => {
     const today = new Date();
     const year = today.getFullYear();
@@ -237,10 +217,6 @@ const getStartOfDay = () => {
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day} 00:00:00`;
 };
-
-// ==========================================================
-// MIDDLEWARE DE AUTENTICAÇÃO (VERIFICA O TOKEN)
-// ==========================================================
 
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -259,15 +235,7 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-
-// ==========================================================
-// ROTAS DE AUTENTICAÇÃO (LOGIN/REGISTER/ATIVAÇÃO)
-// ==========================================================
-
-// Rota para Cadastro de Novo Usuário (Barbeiro ou Cliente)
-// Rota para Cadastro (aceita multipart/form-data para permitir upload de foto durante o registro)
 app.post('/auth/register', (req, res) => {
-    // Usa o middleware de upload para permitir campo 'foto_perfil' opcional
     upload(req, res, async (err) => {
         if (err instanceof multer.MulterError) {
             console.error('Erro Multer no registro:', err);
@@ -278,10 +246,8 @@ app.post('/auth/register', (req, res) => {
         }
 
         try {
-            // Extrai campos do body (quando multipart, o body estará em req.body)
             const { nome, email, password, tipo_usuario, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade } = req.body;
 
-            // Validação por campo -> será retornado { errors: { field: message } }
             const fieldErrors = {};
             if (!nome || String(nome).trim() === '') fieldErrors.nome = 'Nome é obrigatório.';
             if (!email || String(email).trim() === '') fieldErrors.email = 'Email é obrigatório.';
@@ -294,7 +260,6 @@ app.post('/auth/register', (req, res) => {
                 return res.status(400).json({ errors: fieldErrors });
             }
 
-            // Verifica se o email já existe em barbeiros OU clientes
             try {
                 const [emailRows] = await db.query(
                     `SELECT 'barbeiro' as origem, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as origem, id FROM clientes WHERE email = ?`,
@@ -308,7 +273,6 @@ app.post('/auth/register', (req, res) => {
                 return res.status(500).json({ error: 'Erro ao validar email.' });
             }
 
-            // Se for barbeiro, valida campos obrigatórios do perfil e verifica duplicidade de documento ANTES de criar o usuário
             if (tipo_usuario === 'barbeiro') {
                 const cleanedDocumento = (documento || '').replace(/\D/g, '');
                 const barberErrors = {};
@@ -343,14 +307,10 @@ app.post('/auth/register', (req, res) => {
             }
 
             const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Insere o registro base na tabela barbeiros (foto será atualizada posteriormente se houver arquivo)
-            // Insere já com status_ativacao 'ativa' para simplificar fluxo (sem chave)
             const sql = 'INSERT INTO barbeiros (nome, email, password_hash, tipo_usuario, status_ativacao) VALUES (?, ?, ?, ?, ?)';
             const [result] = await db.query(sql, [nome, email, hashedPassword, tipo_usuario, 'ativa']);
             const userId = result.insertId;
 
-            // Se veio um arquivo, renomeia para incluir o ID e atualiza a coluna foto_perfil
             if (req.file) {
                 try {
                     const oldFilename = req.file.filename;
@@ -365,13 +325,9 @@ app.post('/auth/register', (req, res) => {
                 }
             }
 
-            // Se for barbeiro e vieram dados de perfil, salva na tabela perfil_barbeiro
             if (tipo_usuario === 'barbeiro') {
-                // Requer os campos mínimos do perfil; se não vierem, salva apenas o registro base
-                // grava o perfil usando o documento sem formatação
                 const cleanedDocumento = (documento || '').replace(/\D/g, '');
                 if (!isValidDocumento(cleanedDocumento)) {
-                    // não falha todo o registro do usuário base, mas solicita correção do perfil
                     return res.status(400).json({ errors: { documento: 'Documento inválido (CPF/CNPJ com dígitos incorretos).' } });
                 }
                 const finalComplemento = complemento === '' ? null : complemento;
@@ -382,7 +338,6 @@ app.post('/auth/register', (req, res) => {
             return res.status(201).json({ message: 'Usuário registrado com sucesso!', userId: userId, userName: nome });
 
         } catch (err) {
-            // Se houver erro de duplicidade, tenta mapear e retornar 409 (campo email)
             if (err && err.code === 'ER_DUP_ENTRY') {
                 return res.status(409).json({ errors: { email: 'Email já está em uso.' } });
             }
@@ -392,9 +347,8 @@ app.post('/auth/register', (req, res) => {
     });
 });
 
-// Rota dedicada para Cadastro de Cliente
 app.post('/auth/register/cliente', async (req, res) => {
-    const { nome, email, password, telefone, documento } = req.body; // Campos da tabela 'clientes'
+    const { nome, email, password, telefone, documento } = req.body;
     
     const fieldErrors = {};
     if (!nome || String(nome).trim() === '') fieldErrors.nome = 'Nome é obrigatório.';
@@ -407,7 +361,6 @@ app.post('/auth/register/cliente', async (req, res) => {
         return res.status(400).json({ errors: fieldErrors });
     }
 
-    // Verifica se o email já existe em barbeiros OU clientes
     try {
         const [emailRows] = await db.query(
             `SELECT 'barbeiro' as origem, id FROM barbeiros WHERE email = ? UNION SELECT 'cliente' as origem, id FROM clientes WHERE email = ?`,
@@ -422,7 +375,6 @@ app.post('/auth/register/cliente', async (req, res) => {
     }
 
     try {
-        // Se foi enviado documento, valida (esperamos CPF para clientes)
         const cleanedDocumento = documento ? String(documento).replace(/\D/g, '') : null;
         if (cleanedDocumento && cleanedDocumento.length !== 11) {
             return res.status(400).json({ error: 'Documento inválido para cliente. Use CPF com 11 dígitos.' });
@@ -430,8 +382,6 @@ app.post('/auth/register/cliente', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Insere na tabela 'clientes'. Se a coluna 'documento' não existir no banco,
-        // o DB retornará erro — trate como opcional no frontend caso seu esquema não tenha sido atualizado.
         const sql = cleanedDocumento
             ? 'INSERT INTO clientes (nome, email, password_hash, telefone, documento) VALUES (?, ?, ?, ?, ?)'
             : 'INSERT INTO clientes (nome, email, password_hash, telefone) VALUES (?, ?, ?, ?)';
@@ -442,7 +392,6 @@ app.post('/auth/register/cliente', async (req, res) => {
 
         const [result] = await db.query(sql, params);
 
-        // Sucesso: Cliente não precisa de ativação.
         res.status(201).json({ message: 'Cliente registrado com sucesso!', userId: result.insertId });
 
     } catch (err) {
@@ -454,31 +403,23 @@ app.post('/auth/register/cliente', async (req, res) => {
     }
 });
 
-// Rota para Login de Usuário (CHECA O STATUS DE ATIVAÇÃO)
-// Rota para Login de Usuário (CHECA Cliente OU Barbeiro)
 app.post('/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        // --- 1. TENTA BUSCAR NA TABELA 'BARBEIROS' ---
-        // Barbeiros têm status de ativação e tipo_usuario (barbeiro, admin)
         let sql = 'SELECT id, nome, email, password_hash, tipo_usuario, status_ativacao FROM barbeiros WHERE email = ?';
         let [results] = await db.query(sql, [email]);
         let user = results[0];
         let userType = user?.tipo_usuario;
-        let isBarbeiro = true; // Flag para rastrear a origem do usuário
-        
-        // --- 2. SE NÃO ENCONTROU, TENTA BUSCAR NA TABELA 'CLIENTES' ---
+        let isBarbeiro = true;
         if (!user) {
-            // Clientes NÃO têm status_ativacao ou tipo_usuario no DB, definimos fixo aqui
             sql = 'SELECT id, nome, email, password_hash FROM clientes WHERE email = ?';
             [results] = await db.query(sql, [email]);
             user = results[0];
-            userType = 'cliente'; // Define o tipo manualmente
-            isBarbeiro = false; // Não é Barbeiro
+            userType = 'cliente'; 
+            isBarbeiro = false; 
         }
 
-        // --- 3. VALIDAÇÃO DE EXISTÊNCIA E SENHA ---
         if (!user || !user.password_hash) { 
             return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
@@ -489,8 +430,6 @@ app.post('/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Email ou senha inválidos.' });
         }
         
-        // --- 4. LÓGICA DE ATIVAÇÃO (APENAS PARA BARBEIROS) ---
-        // Se for Barbeiro e o status for 'pendente', bloqueia o login
         if (isBarbeiro && user.status_ativacao === 'pendente') {
             return res.status(403).json({ 
                 error: 'Ativação pendente. Por favor, insira sua chave de licença.',
@@ -498,9 +437,6 @@ app.post('/auth/login', async (req, res) => {
             });
         }
         
-        // Se for Cliente, este bloco é ignorado, e o login segue normalmente.
-
-        // --- 5. SUCESSO: GERA O TOKEN ---
         const token = jwt.sign({ id: user.id, email: user.email, tipo: userType }, SECRET_KEY, { expiresIn: '1h' });
         
         res.json({ 
@@ -508,7 +444,7 @@ app.post('/auth/login', async (req, res) => {
             token, 
             userId: user.id, 
             userName: user.nome,
-            userType: userType // Retorna 'cliente', 'barbeiro' ou 'admin'
+            userType: userType 
         });
 
     } catch (err) {
@@ -517,7 +453,6 @@ app.post('/auth/login', async (req, res) => {
     }
 });
 
-// Rota para Ativação de Conta (VERIFICA CHAVE E MUDA STATUS)
 app.post('/auth/ativar-conta', async (req, res) => {
     const { userId, chaveAcesso } = req.body;
     
@@ -554,29 +489,167 @@ app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
     const userEmail = req.user.email;
     const userType = req.user.tipo;
 
+    console.log(`[DELETE /auth/delete-account] Usuário: ${userEmail} (ID: ${userId}, tipo: ${userType})`);
+
     try {
-        let sql;
-        let params = [userId];
+        let hasPendencies = false;
+        let pendencyMessage = '';
 
         if (userType === 'barbeiro' || userType === 'admin') {
-            sql = 'DELETE FROM barbeiros WHERE id = ?';
+            try {
+                // Verificar agendamentos pendentes (não concluídos, não cancelados)
+                const [agendamentos] = await db.query(
+                    'SELECT COUNT(*) as count FROM agendamentos WHERE barbeiro_id = ? AND status NOT IN (\'concluido\', \'cancelado\')',
+                    [userId]
+                );
+                
+                console.log(`[DELETE /auth/delete-account] Agendamentos pendentes (barbeiro): `, agendamentos);
+
+                if (agendamentos && agendamentos[0] && agendamentos[0].count > 0) {
+                    hasPendencies = true;
+                    pendencyMessage = `Você tem ${agendamentos[0].count} agendamento(s) pendente(s). Conclua ou cancele-os antes de excluir a conta.`;
+                }
+            } catch (agErr) {
+                console.error('Erro ao verificar agendamentos:', agErr);
+            }
+
+            // Verificar transações pendentes (se a tabela existir)
+            try {
+                const [transacoes] = await db.query(
+                    'SELECT COUNT(*) as count FROM movimentacoes WHERE barbeiro_id = ? AND status != \'concluida\'',
+                    [userId]
+                );
+                
+                console.log(`[DELETE /auth/delete-account] Transações pendentes (barbeiro): `, transacoes);
+
+                if (transacoes && transacoes[0] && transacoes[0].count > 0) {
+                    hasPendencies = true;
+                    pendencyMessage = `Você tem ${transacoes[0].count} transação(ões) pendente(s). Conclua-as antes de excluir a conta.`;
+                }
+            } catch (trErr) {
+                console.error('Erro ao verificar transações (tabela pode não existir):', trErr);
+                // Continuar mesmo se não conseguir verificar transações
+            }
+
         } else if (userType === 'cliente') {
-            sql = 'DELETE FROM clientes WHERE id = ?';
+            try {
+                // Verificar agendamentos pendentes do cliente
+                const [agendamentos] = await db.query(
+                    'SELECT COUNT(*) as count FROM agendamentos WHERE cliente_id = ? AND status NOT IN (\'concluido\', \'cancelado\')',
+                    [userId]
+                );
+                
+                console.log(`[DELETE /auth/delete-account] Agendamentos pendentes (cliente): `, agendamentos);
+
+                if (agendamentos && agendamentos[0] && agendamentos[0].count > 0) {
+                    hasPendencies = true;
+                    pendencyMessage = `Você tem ${agendamentos[0].count} agendamento(s) pendente(s). Conclua ou cancele-os antes de excluir a conta.`;
+                }
+            } catch (agErr) {
+                console.error('Erro ao verificar agendamentos do cliente:', agErr);
+            }
         } else {
             return res.status(400).json({ error: 'Tipo de usuário inválido para exclusão.' });
         }
 
-        const [result] = await db.query(sql, params);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
+        // Se houver pendências, retornar erro
+        if (hasPendencies) {
+            console.log(`[DELETE /auth/delete-account] Pendências encontradas: ${pendencyMessage}`);
+            return res.status(409).json({ error: pendencyMessage });
+        }
+
+        console.log(`[DELETE /auth/delete-account] Sem pendências. Prosseguindo com exclusão...`);
+
+        // Se não há pendências, proceder com exclusão
+        // IMPORTANTE: Primeiro deletar agendamentos (para evitar constraint de FK), depois o usuário
+        
+        let deleteParams = [userId];
+
+        if (userType === 'barbeiro' || userType === 'admin') {
+            // Deletar todos os agendamentos do barbeiro
+            try {
+                await db.query('DELETE FROM agendamentos WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Agendamentos do barbeiro deletados`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar agendamentos:`, delErr.message);
+            }
+            
+            // Deletar horários
+            try {
+                await db.query('DELETE FROM horarios WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Horários do barbeiro deletados`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar horários:`, delErr.message);
+            }
+
+            // Deletar serviços
+            try {
+                await db.query('DELETE FROM servicos WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Serviços do barbeiro deletados`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar serviços:`, delErr.message);
+            }
+
+            // Deletar perfil do barbeiro
+            try {
+                await db.query('DELETE FROM perfil_barbeiro WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Perfil do barbeiro deletado`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar perfil:`, delErr.message);
+            }
+
+            // Deletar taxa de cartão
+            try {
+                await db.query('DELETE FROM taxa_cartao WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Taxa de cartão do barbeiro deletada`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar taxa de cartão:`, delErr.message);
+            }
+
+            // Deletar movimentações financeiras
+            try {
+                await db.query('DELETE FROM movimentacoes_financeiras WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Movimentações financeiras do barbeiro deletadas`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar movimentações financeiras:`, delErr.message);
+            }
+
+            // Deletar dias bloqueados
+            try {
+                await db.query('DELETE FROM blocked_dates WHERE barbeiro_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Dias bloqueados do barbeiro deletados`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar dias bloqueados:`, delErr.message);
+            }
+
+            // Por fim, deletar o barbeiro
+            const [result] = await db.query('DELETE FROM barbeiros WHERE id = ?', deleteParams);
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
+            }
+
+        } else if (userType === 'cliente') {
+            // Deletar todos os agendamentos do cliente
+            try {
+                await db.query('DELETE FROM agendamentos WHERE cliente_id = ?', [userId]);
+                console.log(`[DELETE /auth/delete-account] Agendamentos do cliente deletados`);
+            } catch (delErr) {
+                console.error(`[DELETE /auth/delete-account] Erro ao deletar agendamentos:`, delErr.message);
+            }
+
+            // Por fim, deletar o cliente
+            const [result] = await db.query('DELETE FROM clientes WHERE id = ?', deleteParams);
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
+            }
         }
 
         console.log(`Conta do usuário ${userEmail} (ID: ${userId}, tipo: ${userType}) excluída com sucesso.`);
         return res.status(200).json({ message: 'Conta excluída permanentemente. Redirecionando...' });
 
     } catch (err) {
-        console.error('Erro na exclusão de conta:', err);
-        return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
+        console.error('Erro na exclusão de conta:', err.message, err.stack);
+        return res.status(500).json({ error: 'Erro interno: ' + err.message });
     }
 });
 
@@ -844,13 +917,11 @@ app.get('/movimentacoes/:id', authenticateToken, async (req, res) => {
 });
 
 
-// Rota de EDIÇÃO (PUT /movimentacoes/:id)
 app.put('/movimentacoes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const barbeiro_id = req.user.id;
     const { descricao, valor, tipo, categoria, forma_pagamento } = req.body;
     
-    // Validação básica
     if (!valor || !tipo) {
         return res.status(400).json({ error: "Valor e tipo são obrigatórios para edição." });
     }
@@ -879,7 +950,6 @@ app.put('/movimentacoes/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Rota de EXCLUSÃO (DELETE /movimentacoes/:id)
 app.delete('/movimentacoes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const barbeiro_id = req.user.id;
@@ -905,11 +975,10 @@ app.get('/saldo', authenticateToken, async (req, res) => {
     const startOfDay = getStartOfDay();
 
     try {
-        // SQL em linha e limpo
         const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) - SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as saldo_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
         
         const [rows] = await db.query(sql, [barbeiro_id, startOfDay]); 
-        const resultado = rows[0]; // Certifique-se de que é a linha de dados
+        const resultado = rows[0]; 
 
         return res.json({
             saldo_total: parseFloat(resultado.saldo_total || 0).toFixed(2)
@@ -927,7 +996,6 @@ app.get('/totais/diarios', authenticateToken, async (req, res) => {
     const startOfDay = getStartOfDay();
 
     try {
-        // SQL em linha e limpo (Corrigido o problema de sintaxe)
         const sql = "SELECT SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receita_total, SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END) as despesa_total FROM movimentacoes_financeiras WHERE barbeiro_id = ? AND data_hora >= ?";
         
         const [rows] = await db.query(sql, [barbeiro_id, startOfDay]);
@@ -945,16 +1013,14 @@ app.get('/totais/diarios', authenticateToken, async (req, res) => {
 });
 
 
-// --- Rota 1: GET /taxa-cartao (Busca a taxa do barbeiro logado) ---
 app.get('/taxa-cartao', authenticateToken, async (req, res) => {
-    // 1. Usa o ID do barbeiro logado
+
     const barbeiro_id = req.user.id; 
 
     try {
         const sql = 'SELECT taxa FROM taxa_cartao WHERE barbeiro_id = ?';
         const [rows] = await db.query(sql, [barbeiro_id]);
 
-        // 2. Retorna a taxa ou 0.00 se o registro ainda não existir
         const taxa = rows && rows[0] ? parseFloat(rows[0].taxa) : 0.00;
         
         return res.json({ taxa: taxa }); 
@@ -965,7 +1031,6 @@ app.get('/taxa-cartao', authenticateToken, async (req, res) => {
     }
 });
 
-// --- Rota 2: PUT /taxa-cartao (Salva/Atualiza a taxa do barbeiro logado) ---
 app.put('/taxa-cartao', authenticateToken, async (req, res) => {
     const barbeiro_id = req.user.id;
     const { taxa } = req.body; 
@@ -1097,45 +1162,8 @@ app.get('/relatorio/anual/:ano', authenticateToken, async (req, res) => {
 
 
 // Rota para EXCLUSÃO DA CONTA (Suporta Barbeiro e Cliente)
-app.delete('/auth/delete-account', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const userEmail = req.user.email;
-    const userType = req.user.tipo;
-
-    try {
-        let sql;
-        let params = [userId];
-
-        if (userType === 'barbeiro' || userType === 'admin') {
-            sql = 'DELETE FROM barbeiros WHERE id = ?';
-        } else if (userType === 'cliente') {
-            sql = 'DELETE FROM clientes WHERE id = ?';
-        } else {
-            return res.status(400).json({ error: 'Tipo de usuário inválido para exclusão.' });
-        }
-
-        const [result] = await db.query(sql, params);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Conta não encontrada ou já excluída.' });
-        }
-
-        console.log(`Conta do usuário ${userEmail} (ID: ${userId}, tipo: ${userType}) excluída com sucesso.`);
-        return res.status(200).json({ message: 'Conta excluída permanentemente. Redirecionando...' });
-
-    } catch (err) {
-        console.error('Erro na exclusão de conta:', err);
-        return res.status(500).json({ error: 'Erro interno. Verifique as restrições do banco.' });
-    }
-});
 
 
-// ==========================================================
-// ROTAS DE SERVIÇOS, CLIENTES E AGENDAMENTO (IMPLEMENTADO)
-// ==========================================================
-
-// --- ROTAS CRUD DE SERVIÇOS DO BARBEIRO (FINAL) ---
-
-// 1. LISTAR TODOS OS SERVIÇOS DO BARBEIRO LOGADO (READ)
 app.get('/servicos/meus', authenticateToken, async (req, res) => {
     try {
         const barbeiro_id = req.user.id;
@@ -1210,7 +1238,6 @@ app.delete('/servicos/:id', authenticateToken, async (req, res) => {
 });
 
 
-// --- ROTAS DE LISTAGEM DE SUPORTE (APIs que o Agendamento precisa) ---
 
 // Rota: GET /clientes
 app.get('/clientes', authenticateToken, async (req, res) => {
@@ -1357,14 +1384,8 @@ app.delete('/horarios/:id', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: "Erro interno ao deletar horário." });
     }
 });
-// -----------------------------------------------------------------
-// ROTAS DE AGENDAMENTO (IMPLEMENTAÇÃO COMPLETA)
-// -----------------------------------------------------------------
 
-// Rota Crítica: POST /agendamentos (Criação com Validação de Conflito)
-// server.js (Localize e atualize a rota POST /agendamentos)
 
-// server.js (Rota POST /agendamentos)
 
 app.post('/agendamentos', authenticateToken, async (req, res) => {
     // 1. Extração dos dados (TODOS OS CAMPOS)
@@ -1477,7 +1498,6 @@ app.get('/agendamentos', authenticateToken, async (req, res) => {
                 C.nome AS nome_cliente, 
                 S.nome AS nome_servico,
                 
-                -- 🚨 CÁLCULO DA REPUTAÇÃO DO CLIENTE 🚨
                 (
                     SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
                     FROM agendamentos
@@ -1599,7 +1619,7 @@ app.put('/agendamentos/:id/status', authenticateToken, async (req, res) => {
 
     try {
         // 4. Executa a Query usando o objeto DB
-        const [result] = await db.query(query, params); // <--- CORREÇÃO AQUI
+        const [result] = await db.query(query, params);
         
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: "Agendamento não encontrado ou sem permissão para alteração." });
@@ -1685,9 +1705,7 @@ app.get('/barbearias/busca', async (req, res) => {
                 pb.localidade,
                 pb.uf,
                 b.nome AS nome_barbeiro,
-                b.foto_perfil, -- 🚨 CAMPO ADICIONADO/VERIFICADO
-                
-                -- Cálculo da média de avaliação (Mantido)
+                b.foto_perfil,
                 (
                     SELECT ROUND(AVG(nota), 1)
                     FROM avaliacoes_barbeiros 
@@ -1775,13 +1793,11 @@ app.get('/barbearia/:barbeiroId/detalhes', async (req, res) => {
                 pb.complemento,
                 pb.localidade,
                 pb.uf,
-                -- 🚨 CAMPOS CORRIGIDOS E ADICIONADOS AQUI 🚨
                 pb.telefone, 
                 pb.cep, 
                 b.foto_perfil,
                 b.nome AS nome_barbeiro,
                 
-                -- Cálculo da média de avaliação (Mantido)
                 (
                     SELECT ROUND(AVG(nota), 1)
                     FROM avaliacoes_barbeiros 
@@ -1825,7 +1841,7 @@ app.get('/barbearia/:barbeiroPrincipalId/profissionais', async (req, res) => {
 
     // Se você não tem um conceito de "sub-barbeiros" no DB, apenas liste o principal
     // (Ajuste esta query se tiver uma tabela de 'BarbeiroSecundario' ou 'Funcionario')
-    const sql = 'SELECT id, nome, foto_perfil FROM barbeiros WHERE id = ? AND status_ativacao = "ativa"';
+    const sql = 'SELECT b.id, b.nome, b.foto_perfil, pb.nome_barbearia FROM barbeiros b LEFT JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id WHERE b.id = ? AND b.status_ativacao = "ativa"';
     
     try {
         const [profissionais] = await db.query(sql, [barbeiroPrincipalId]);
@@ -1840,7 +1856,8 @@ app.get('/barbearia/:barbeiroPrincipalId/profissionais', async (req, res) => {
         return res.json(profissionais.map(p => ({
             id: p.id,
             nome: p.nome,
-            foto_url: p.foto_perfil ? `http://localhost:3000${p.foto_perfil}` : null
+            foto_url: p.foto_perfil ? `http://localhost:3000${p.foto_perfil}` : null,
+            nome_barbearia: p.nome_barbearia || 'Barbearia sem nome'
         })));
         
     } catch (error) {
@@ -1984,17 +2001,18 @@ app.get('/agendamentos/cliente/:clienteId', authenticateToken, async (req, res) 
         const sql = `
             SELECT 
                 a.id, a.data_hora_inicio, a.data_hora_fim, a.status, a.valor_servico, a.observacao, a.preferencia, a.motivo_cancelamento, a.cancelado_por,
-                b.nome AS nome_barbeiro, 
+                a.barbeiro_id,
+                b.nome AS nome_barbeiro,
+                pb.nome_barbearia AS nome_barbearia,
                 s.nome AS nome_servico,
-                
-                -- 🚨 NOVO: Checa se a avaliação do barbeiro existe para este agendamento 🚨
+            
                 av.nota AS nota_barbeiro_cliente
                 
             FROM agendamentos a
             JOIN barbeiros b ON a.barbeiro_id = b.id
+            LEFT JOIN perfil_barbeiro pb ON b.id = pb.barbeiro_id
             JOIN servicos s ON a.servico_id = s.id
             
-            -- LEFT JOIN para verificar se o cliente já avaliou
             LEFT JOIN avaliacoes_barbeiros av ON av.agendamento_id = a.id
             
             WHERE a.cliente_id = ?
@@ -2029,8 +2047,7 @@ app.get('/agendamentos/data', authenticateToken, async (req, res) => {
                 C.nome AS nome_cliente,
                 C.foto_perfil AS foto_cliente_path,
                 S.nome AS nome_servico,
-                
-                -- CÁLCULO DA REPUTAÇÃO DO CLIENTE 
+                 
                 (
                     SELECT ROUND(AVG(avaliacao_cliente_nota), 1) 
                     FROM agendamentos
@@ -2757,7 +2774,7 @@ app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
         const sql = `
             SELECT 
                 A.data_hora_inicio AS data_agendamento,
-                A.status, -- <---- LINHA ADICIONADA/MODIFICADA
+                A.status, 
                 S.nome AS servico_nome,
                 PB.nome_barbearia
             FROM agendamentos A
@@ -2783,16 +2800,13 @@ app.get('/agendamentos/ultimo', authenticateToken, async (req, res) => {
     }
 });
 
-// server.js (ADICIONAR NOVA ROTA PARA UPLOAD DE FOTO DO CLIENTE)
 
 app.put('/perfil/cliente/foto', authenticateToken, (req, res) => {
     
     const cliente_id = req.user.id; 
     
-    // 1. Executa o middleware Multer para processar o arquivo
     upload(req, res, async (err) => {
         
-        // Trata erros do Multer (ex: arquivo muito grande)
         if (err instanceof multer.MulterError) {
             console.error("Erro Multer:", err.message);
             return res.status(500).json({ error: "Erro no upload: " + err.message });
@@ -2810,15 +2824,13 @@ app.put('/perfil/cliente/foto', authenticateToken, (req, res) => {
         let newPath = null; 
         
         try {
-            // 🚨 CONSTRUÇÃO DO CAMINHO: foto-CLIENTEID-timestamp.ext
             const oldFilename = req.file.filename;
             const filenameWithId = `foto-cliente-${cliente_id}-${oldFilename}`;
             newPath = path.join(uploadsDir, filenameWithId); 
             
             fs.renameSync(oldPath, newPath);
-            fotoPath = `/uploads/${filenameWithId}`; // Caminho RELATIVO para o DB
+            fotoPath = `/uploads/${filenameWithId}`;
 
-            // 2. Lógica Opcional: Deletar foto antiga (se houver)
             const [oldPhotoRow] = await db.query('SELECT foto_perfil FROM clientes WHERE id = ?', [cliente_id]);
             const oldPhotoPath = oldPhotoRow?.[0]?.foto_perfil;
             if (oldPhotoPath && oldPhotoPath !== fotoPath) {
@@ -2828,18 +2840,15 @@ app.put('/perfil/cliente/foto', authenticateToken, (req, res) => {
                 }
             }
             
-            // 3. Query para atualizar a coluna foto_perfil no DB
             const sql = 'UPDATE clientes SET foto_perfil = ? WHERE id = ?';
             await db.query(sql, [fotoPath, cliente_id]);
 
             return res.status(200).json({ 
                 message: "Foto de perfil atualizada com sucesso!",
-                // 🚨 GARANTIR QUE RETORNA O PATH RELATIVO ORIGINAL!
                 foto_perfil_url: fotoPath 
             });;
 
         } catch (error) {
-            // Se falhar no DB, tenta deletar o arquivo renomeado para limpeza
             if (newPath && fs.existsSync(newPath)) {
                 fs.unlink(newPath, () => { }); 
             }

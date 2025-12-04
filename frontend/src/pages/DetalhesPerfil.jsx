@@ -226,8 +226,23 @@ const DetalhesPerfil = () => {
                 {isBarbeiro && (
                     <div style={{ clear: 'both', marginTop: '30px', borderTop: '1px solid #ddd', paddingTop: '20px' }}>
                         <h3 style={{ marginTop: '0', color: ACCENT_COLOR }}><FaBuilding /> Detalhes da Barbearia</h3>
-                        <p><strong>Estabelecimento:</strong> {dadosExibicao.nomeBarbearia}</p>
-                        <p><strong>Endereço:</strong> {dadosExibicao.rua}, N° {dadosExibicao.numero} - {dadosExibicao.localidade}/{dadosExibicao.uf}</p>
+                        <p><strong>Estabelecimento:</strong> {dadosExibicao.nomeBarbearia || dadosExibicao.nome_barbearia}</p>
+                        {
+                            (() => {
+                                const rua = dadosExibicao.rua || '';
+                                const numero = dadosExibicao.numero || '';
+                                const localidade = dadosExibicao.localidade || '';
+                                const uf = dadosExibicao.uf || '';
+                                const complemento = dadosExibicao.complemento || dadosExibicao.complement || '';
+                                const enderecoParts = [];
+                                if (rua) enderecoParts.push(rua);
+                                if (numero) enderecoParts.push(`N° ${numero}`);
+                                if (complemento) enderecoParts.push(`Compl.: ${complemento}`);
+                                const cidadeUf = localidade ? `${localidade}${uf ? '/' + uf : ''}` : (uf ? uf : '');
+                                const endereco = enderecoParts.join(' - ') + (cidadeUf ? ` - ${cidadeUf}` : '');
+                                return (<p><strong>Endereço:</strong> {endereco || 'Não informado'}</p>);
+                            })()
+                        }
                     </div>
                 )}
             </div>

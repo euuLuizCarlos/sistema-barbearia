@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { FaSave, FaClock, FaCalendarTimes, FaTrashAlt, FaCheck, FaMousePointer, FaEdit, FaTimes } from 'react-icons/fa'; 
 import { useUi } from '../contexts/UiContext';
-import ModalExclusaoHorarios from '../components/ControleCaixa/ModalExclusaoHorarios.jsx'; 
+import ModalExclusaoHorarios from '../components/ControleCaixa/ModalExclusaoHorarios.jsx';
+import ModalDesativarDia from '../components/ControleCaixa/ModalDesativarDia.jsx'; 
 
 
 // =======================================================
@@ -49,12 +50,14 @@ const GerenciarHorarios = () => {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedSlots, setSelectedSlots] = useState([]); // Array de IDs
     const [horarioToDelete, setHorarioToDelete] = useState(null); // Para modal de exclusão flexível
+    const [diaToDesativar, setDiaToDesativar] = useState(null); // NOVO: Para modal de desativação de dia
     const [editingId, setEditingId] = useState(null); // Estado para rastrear qual horário está sendo editado
     const [editForm, setEditForm] = useState({ hora_inicio: '', hora_fim: '' }); // Dados do horário sendo editado
     
     const [form, setForm] = useState({
         hora_inicio: '08:00',
-        hora_fim: '18:00'
+        hora_fim: '18:00',
+        dias_selecionados: ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'] // NOVO: Todos os dias selecionados por padrão
     });
     
     const ui = useUi();
@@ -83,6 +86,18 @@ const GerenciarHorarios = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setForm(prev => ({ ...prev, [name]: value }));
+    };
+    
+    // NOVO: Handler para toggle de dias selecionados
+    const handleToggleDia = (dia) => {
+        setForm(prev => {
+            const dias = prev.dias_selecionados;
+            if (dias.includes(dia)) {
+                return { ...prev, dias_selecionados: dias.filter(d => d !== dia) };
+            } else {
+                return { ...prev, dias_selecionados: [...dias, dia] };
+            }
+        });
     };
     
     // Agrupamento dos horários por dia
@@ -153,24 +168,31 @@ const GerenciarHorarios = () => {
     
     const handleSubmit = async (e) => {
         if (e) e.preventDefault();
-        setMessage('Adicionando novo turno de trabalho para a semana...');
+        setMessage('Adicionando novo turno de trabalho...');
         setApiError('');
 
-        const { hora_inicio, hora_fim } = form;
+        const { hora_inicio, hora_fim, dias_selecionados } = form;
 
         if (!hora_inicio || !hora_fim || hora_inicio >= hora_fim) {
             setApiError('A hora de início deve ser anterior à hora de fim.');
             setMessage('');
             return;
         }
+        
+        if (dias_selecionados.length === 0) {
+            setApiError('Selecione pelo menos um dia da semana.');
+            setMessage('');
+            return;
+        }
+        
         setIsSelectionMode(false); 
 
         try {
             let successfulCreations = 0;
             let skippedDays = [];
             
-            // Itera sobre TODOS os 7 dias
-            for (const dia of REPLICATION_DAYS_VALUES) {
+            // Itera APENAS sobre os dias selecionados
+            for (const dia of dias_selecionados) {
                 
                 const existingSlotsForDay = horariosPorDia[dia] || [];
                 const isDuplicate = existingSlotsForDay.some(slot => 
@@ -193,7 +215,7 @@ const GerenciarHorarios = () => {
             }
 
             setMessage(successMsg);
-            setForm({ hora_inicio: '08:00', hora_fim: '18:00' }); 
+            setForm({ hora_inicio: '08:00', hora_fim: '18:00', dias_selecionados: ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'] }); 
             fetchHorarios(); 
             
         } catch (error) {
@@ -265,9 +287,16 @@ const GerenciarHorarios = () => {
     
     // --- FUNÇÃO PARA DESATIVAR UM DIA COMPLETO (DELETE TODOS OS TURNOS DO DIA) ---
     const handleDesativarDia = async (diaDaSemana) => {
-        const ok = await ui.confirm(`Tem certeza que deseja DESATIVAR o atendimento da ${getDayLabel(diaDaSemana)}? Isso removerá todos os horários deste dia.`);
-        if (!ok) return;
+        const slotsForDay = (horariosPorDia[diaDaSemana] || []).length;
+        setDiaToDesativar({ dia_semana: diaDaSemana, count: slotsForDay });
+    };
+    
+    // Confirma a desativação do dia
+    const handleConfirmDesativarDia = async () => {
+        if (!diaToDesativar) return;
 
+        const diaDaSemana = diaToDesativar.dia_semana;
+        setDiaToDesativar(null); // Fecha o modal imediatamente
         setMessage(`Desativando ${getDayLabel(diaDaSemana)}...`);
         setApiError('');
 
@@ -275,11 +304,11 @@ const GerenciarHorarios = () => {
             const slotsToDelete = (horariosPorDia[diaDaSemana] || []).map(s => s.id);
 
             if (slotsToDelete.length > 0) {
-                 for (const id of slotsToDelete) {
+                for (const id of slotsToDelete) {
                     await api.delete(`/horarios/${id}`);
                 }
             } else {
-                 setMessage(`Não havia horários para desativar na ${getDayLabel(diaDaSemana)}.`);
+                setMessage(`Não havia horários para desativar na ${getDayLabel(diaDaSemana)}.`);
             }
            
             ui.showPostIt(`Atendimento de ${getDayLabel(diaDaSemana)} desativado com sucesso.`, 'success');
@@ -344,30 +373,51 @@ const GerenciarHorarios = () => {
             {/* --- BLOCO DE DEFINIÇÃO DE NOVO TURNO (REPLICAÇÃO) --- */}
             <div style={{ marginBottom: '40px', padding: '20px', border: `1px solid ${COLORS.PRIMARY}`, borderRadius: '8px', backgroundColor: '#fff', boxShadow: '0 0 10px rgba(2, 48, 71, 0.2)' }}>
                 <h3 style={{ color: COLORS.PRIMARY, borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-                    Adicionar Novo Turno à Semana (7 Dias)
+                    Adicionar Novo Turno (Selecione os Dias)
                 </h3>
                 <p style={{ color: COLORS.SECONDARY_TEXT, marginBottom: '20px' }}>
-                    Defina um horário. Ele será adicionado como um novo turno de trabalho para **todos** os 7 dias, exceto onde já existir.
+                    Defina um horário e escolha em quais dias da semana deseja adicioná-lo. Você pode adicionar o mesmo horário apenas para dias específicos.
                 </p>
-                <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
-                    {/* Campo Hora Início */}
-                    <div style={{ flex: 1 }}>
-                        <label>HORA INÍCIO *</label>
-                        <input type="time" name="hora_inicio" value={form.hora_inicio} onChange={handleChange} style={inputStyle} required />
-                    </div>
+                    {/* Linha com Horários */}
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
+                        {/* Campo Hora Início */}
+                        <div style={{ flex: 1 }}>
+                            <label>HORA INÍCIO *</label>
+                            <input type="time" name="hora_inicio" value={form.hora_inicio} onChange={handleChange} style={inputStyle} required />
+                        </div>
 
-                    {/* Campo Hora Fim */}
-                    <div style={{ flex: 1 }}>
-                        <label>HORA FIM *</label>
-                        <input type="time" name="hora_fim" value={form.hora_fim} onChange={handleChange} style={inputStyle} required />
+                        {/* Campo Hora Fim */}
+                        <div style={{ flex: 1 }}>
+                            <label>HORA FIM *</label>
+                            <input type="time" name="hora_fim" value={form.hora_fim} onChange={handleChange} style={inputStyle} required />
+                        </div>
+                    </div>
+                    
+                    {/* Seleção de Dias */}
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>Selecione os Dias da Semana *</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px' }}>
+                            {DIAS_SEMANA.map(dia => (
+                                <label key={dia.value} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '10px', borderRadius: '5px', backgroundColor: form.dias_selecionados.includes(dia.value) ? '#e6f2ff' : 'transparent', border: form.dias_selecionados.includes(dia.value) ? `2px solid ${COLORS.PRIMARY}` : '1px solid #ccc', transition: 'all 0.2s' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={form.dias_selecionados.includes(dia.value)}
+                                        onChange={() => handleToggleDia(dia.value)}
+                                        style={{ marginRight: '8px', cursor: 'pointer', width: '16px', height: '16px' }}
+                                    />
+                                    <span>{dia.label}</span>
+                                </label>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Botão de Ação */}
-                    <div style={{ flex: 1, paddingTop: '30px' }}>
-                        <button type="submit" style={buttonStyle(COLORS.PRIMARY)} disabled={loading}>
+                    <div>
+                        <button type="submit" style={buttonStyle(COLORS.PRIMARY)} disabled={loading || form.dias_selecionados.length === 0}>
                             <FaSave style={{ marginRight: '5px' }} />
-                            Adicionar Novo Turno Semanal
+                            Adicionar Turno aos Dias Selecionados
                         </button>
                     </div>
                 </form>
@@ -551,14 +601,6 @@ const GerenciarHorarios = () => {
                                     <p style={{ fontSize: '0.9em', color: COLORS.SECONDARY_TEXT }}>
                                         Dia de folga, ou sem horário definido.
                                     </p>
-                                    {/* Botão para reativar/aplicar o padrão */}
-                                    <button 
-                                        onClick={handleSubmit} 
-                                        style={{ ...buttonStyle(COLORS.ACCENT), color: COLORS.PRIMARY, marginTop: '10px' }}
-                                        disabled={loading || isSelectionMode}
-                                    >
-                                        <FaSave /> Aplicar Último Padrão
-                                    </button>
                                 </div>
                             )}
                         </div>
@@ -572,6 +614,16 @@ const GerenciarHorarios = () => {
                     slot={horarioToDelete}
                     onClose={() => setHorarioToDelete(null)}
                     onConfirm={handleConfirmDelete} // Passa a função de exclusão em massa
+                />
+            )}
+            
+            {/* RENDERIZAÇÃO DO MODAL DE DESATIVAÇÃO DE DIA */}
+            {diaToDesativar && (
+                <ModalDesativarDia 
+                    dia_semana={diaToDesativar.dia_semana}
+                    horarios_count={diaToDesativar.count}
+                    onClose={() => setDiaToDesativar(null)}
+                    onConfirm={handleConfirmDesativarDia}
                 />
             )}
         </div>

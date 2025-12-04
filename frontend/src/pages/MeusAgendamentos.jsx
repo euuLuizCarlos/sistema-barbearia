@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useUi } from '../contexts/UiContext';
 import { FaCalendarCheck, FaClock, FaDollarSign, FaUserCircle, FaSpinner, FaTimes, FaStar, FaUserTie, FaCheck } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 // Importar o Modal de Avaliação do Barbeiro (Certifique-se de que este arquivo existe no caminho)
 import ModalAvaliacaoBarbeiro from '../components/Auth/ModalAvaliacaoBarbeiro'; 
 
@@ -24,6 +25,7 @@ const COLORS = {
 const MeusAgendamentos = () => {
     const { user } = useAuth();
     const ui = useUi();
+    const navigate = useNavigate();
     const [agendamentos, setAgendamentos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -174,6 +176,15 @@ const MeusAgendamentos = () => {
                                 <p style={{ margin: '10px 0 5px 0' }}><FaUserCircle style={{ marginRight: '5px'}}/> Barbeiro: **{ag.nome_barbeiro}**</p>
                                 <p style={{ margin: '5px 0' }}><FaClock style={{ marginRight: '5px'}}/> Horário: **{formatDateTime(ag.data_hora_inicio)}**</p>
                                 <p style={{ margin: '5px 0' }}><FaDollarSign style={{ marginRight: '5px', color: COLORS.SUCCESS }}/> Valor: **R$ {parseFloat(ag.valor_servico).toFixed(2)}**</p>
+
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', borderTop: '1px solid #f0f0f0', paddingTop: '10px' }}>
+                                    <button
+                                        onClick={() => navigate(`/barbearia/${ag.barbeiro_id}`)}
+                                        style={{ padding: '10px 16px', backgroundColor: COLORS.ACCENT, color: COLORS.PRIMARY, border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', flex: 1 }}
+                                    >
+                                        Ver Detalhes da Barbearia
+                                    </button>
+                                </div>
 
                                 {/* MOTIVO DE CANCELAMENTO (EXIBIDO PARA O CLIENTE) */}
                                 {ag.status === 'cancelado' && ag.motivo_cancelamento && (
