@@ -295,10 +295,16 @@ app.post('/auth/register', (req, res) => {
                     return res.status(400).json({ errors: { documento: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' } });
                 }
 
+                // Verificar se o documento já está cadastrado (em barbeiros ou clientes)
                 try {
-                    const [existing] = await db.query('SELECT barbeiro_id FROM perfil_barbeiro WHERE documento = ?', [cleanedDocumento]);
+                    const [existing] = await db.query(
+                        `SELECT 'perfil_barbeiro' as origem, barbeiro_id as id FROM perfil_barbeiro WHERE documento = ? 
+                         UNION 
+                         SELECT 'cliente' as origem, id FROM clientes WHERE documento = ?`,
+                        [cleanedDocumento, cleanedDocumento]
+                    );
                     if (existing && existing.length > 0) {
-                        return res.status(409).json({ errors: { documento: 'Documento (CPF/CNPJ) já cadastrado em outro perfil.' } });
+                        return res.status(409).json({ errors: { documento: 'Documento (CPF/CNPJ) já cadastrado no sistema.' } });
                     }
                 } catch (checkErr) {
                     console.error('Erro ao verificar documento duplicado:', checkErr);
@@ -378,6 +384,29 @@ app.post('/auth/register/cliente', async (req, res) => {
         const cleanedDocumento = documento ? String(documento).replace(/\D/g, '') : null;
         if (cleanedDocumento && cleanedDocumento.length !== 11) {
             return res.status(400).json({ error: 'Documento inválido para cliente. Use CPF com 11 dígitos.' });
+        }
+
+        // Validar algoritmo do CPF se fornecido
+        if (cleanedDocumento && !isValidCPF(cleanedDocumento)) {
+            return res.status(400).json({ errors: { documento: 'CPF inválido (dígitos verificadores incorretos).' } });
+        }
+
+        // Verificar se o documento já está cadastrado (em barbeiros ou clientes)
+        if (cleanedDocumento) {
+            try {
+                const [docRows] = await db.query(
+                    `SELECT 'perfil_barbeiro' as origem, barbeiro_id as id FROM perfil_barbeiro WHERE documento = ? 
+                     UNION 
+                     SELECT 'cliente' as origem, id FROM clientes WHERE documento = ?`,
+                    [cleanedDocumento, cleanedDocumento]
+                );
+                if (docRows && docRows.length > 0) {
+                    return res.status(409).json({ errors: { documento: 'CPF já cadastrado no sistema.' } });
+                }
+            } catch (docCheckErr) {
+                console.error('Erro ao verificar documento duplicado (cliente):', docCheckErr);
+                return res.status(500).json({ error: 'Erro ao validar documento.' });
+            }
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -708,6 +737,22 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Documento inválido (CPF ou CNPJ com dígitos incorretos).' });
     }
 
+    // Verificar se o documento já está em uso por outro usuário
+    try {
+        const [docRows] = await db.query(
+            `SELECT 'perfil_barbeiro' as origem, barbeiro_id as id FROM perfil_barbeiro WHERE documento = ? AND barbeiro_id != ?
+             UNION 
+             SELECT 'cliente' as origem, id FROM clientes WHERE documento = ?`,
+            [cleanedDocumento, barbeiro_id, cleanedDocumento]
+        );
+        if (docRows && docRows.length > 0) {
+            return res.status(409).json({ error: 'Documento (CPF/CNPJ) já cadastrado no sistema.' });
+        }
+    } catch (docCheckErr) {
+        console.error('Erro ao verificar documento duplicado:', docCheckErr);
+        return res.status(500).json({ error: 'Erro ao validar documento.' });
+    }
+
     try {
         // SQL FINAL CORRIGIDO: Inclui nome_barbeiro no UPDATE
         const sql = `INSERT INTO perfil_barbeiro (barbeiro_id, nome_barbeiro, nome_barbearia, documento, telefone, rua, numero, bairro, complemento, cep, uf, localidade) 
@@ -735,7 +780,7 @@ app.post('/perfil/barbeiro', authenticateToken, async (req, res) => {
 
     } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ error: 'Este barbeiro já possui um perfil cadastrado.' });
+            return res.status(409).json({ error: 'Documento (CPF/CNPJ) já cadastrado no sistema.' });
         }
         console.error('Erro ao criar perfil:', err);
         res.status(500).json({ error: 'Erro interno ao salvar perfil.' });
@@ -2581,6 +2626,29 @@ app.post('/perfil/cliente', authenticateToken, async (req, res) => {
         const cleanedDocumento = documento ? String(documento).replace(/\D/g, '') : null;
         if (cleanedDocumento && cleanedDocumento.length !== 11) {
             return res.status(400).json({ error: 'Documento inválido. Use CPF válido com 11 dígitos.' });
+        }
+
+        // Validar algoritmo do CPF se fornecido
+        if (cleanedDocumento && !isValidCPF(cleanedDocumento)) {
+            return res.status(400).json({ error: 'CPF inválido (dígitos verificadores incorretos).' });
+        }
+
+        // Verificar se o documento já está em uso por outro usuário
+        if (cleanedDocumento) {
+            try {
+                const [docRows] = await db.query(
+                    `SELECT 'perfil_barbeiro' as origem, barbeiro_id as id FROM perfil_barbeiro WHERE documento = ? 
+                     UNION 
+                     SELECT 'cliente' as origem, id FROM clientes WHERE documento = ? AND id != ?`,
+                    [cleanedDocumento, cleanedDocumento, cliente_id]
+                );
+                if (docRows && docRows.length > 0) {
+                    return res.status(409).json({ error: 'CPF já cadastrado no sistema.' });
+                }
+            } catch (docCheckErr) {
+                console.error('Erro ao verificar documento duplicado:', docCheckErr);
+                return res.status(500).json({ error: 'Erro ao validar documento.' });
+            }
         }
 
         // Verifica se a coluna 'documento' existe para decidir se atualizamos também esse campo
